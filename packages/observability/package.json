@@ -10,6 +10,6 @@
     "build": "tsup src/index.ts --format esm --dts --out-dir dist",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run"
   }
 }
