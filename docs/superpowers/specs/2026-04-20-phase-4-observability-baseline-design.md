@@ -10,7 +10,7 @@ The goal is to install the operational spine early so API and worker execution p
 
 This slice covers:
 
-- a real `@vision/observability` package instead of the current placeholder
+- a real `@vision/observability` package instead of the current stub
 - structured JSON logging shared across API and worker runtimes
 - required baseline context fields `requestId` and `correlationId`
 - optional `traceId` support through a tracing hook boundary
