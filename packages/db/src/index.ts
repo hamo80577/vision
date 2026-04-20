@@ -4,13 +4,13 @@ export {
   createDatabasePool,
   createRuntimeDatabase,
   type DatabasePool,
-  type VisionDatabase
+  type VisionDatabase,
 } from "./client";
 export {
   getDatabaseAdminConfig,
   getDatabaseRuntimeConfig,
   type DatabaseAdminConfig,
-  type DatabaseRuntimeConfig
+  type DatabaseRuntimeConfig,
 } from "./config";
 export { checkDatabaseHealth } from "./health";
 export { appMetadata } from "./schema";

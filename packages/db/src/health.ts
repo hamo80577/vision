@@ -7,7 +7,7 @@ type DatabaseHealthExecutor = {
 };
 
 export async function checkDatabaseHealth(
-  db: DatabaseHealthExecutor
+  db: DatabaseHealthExecutor,
 ): Promise<{ status: "ok"; ok: true }> {
   const result = await db.execute(sql`select 1 as ok`);
 
@@ -17,6 +17,6 @@ export async function checkDatabaseHealth(
 
   return {
     status: "ok",
-    ok: true
+    ok: true,
   };
 }

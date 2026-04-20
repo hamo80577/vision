@@ -9,11 +9,11 @@ export type DatabasePool = Pool;
 
 export function createDatabasePool(
   connectionString: string,
-  overrides: Partial<PoolConfig> = {}
+  overrides: Partial<PoolConfig> = {},
 ): DatabasePool {
   return new Pool({
     connectionString,
-    ...overrides
+    ...overrides,
   });
 }
 
@@ -23,13 +23,13 @@ export function createDatabaseClient(pool: DatabasePool): VisionDatabase {
 
 export function createRuntimeDatabase(
   config: DatabaseRuntimeConfig,
-  overrides: Partial<PoolConfig> = {}
+  overrides: Partial<PoolConfig> = {},
 ) {
   const pool = createDatabasePool(config.databaseUrl, overrides);
 
   return {
     pool,
-    db: createDatabaseClient(pool)
+    db: createDatabaseClient(pool),
   } as const;
 }
 
