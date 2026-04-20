@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 
 import {
   createLogger,
@@ -19,6 +19,14 @@ export type ApiBuildDependencies = {
   logger: VisionLogger;
   tracer: ObservabilityTracer;
 };
+
+function applyResponseContextHeaders(
+  reply: FastifyReply,
+  context: ReturnType<typeof createApiRequestContext>
+): void {
+  reply.header("x-request-id", context.requestId);
+  reply.header("x-correlation-id", context.correlationId);
+}
 
 export function buildApi(
   overrides: Partial<ApiBuildDependencies> = {}
@@ -56,8 +64,16 @@ export function buildApi(
     request.observabilityContext = context;
     request.requestLogger = rootLogger.child(context);
 
-    reply.header("x-request-id", context.requestId);
-    reply.header("x-correlation-id", context.correlationId);
+    applyResponseContextHeaders(reply, context);
+  });
+
+  api.addHook("onSend", async (request, reply, payload) => {
+    const context =
+      request.observabilityContext ?? createApiRequestContext(request, runtime);
+
+    applyResponseContextHeaders(reply, context);
+
+    return payload;
   });
 
   api.addHook("onResponse", async (request, reply) => {
@@ -100,8 +116,10 @@ export function buildApi(
     reply
       .type("application/problem+json")
       .code(statusCode)
-      .header("x-request-id", context.requestId)
-      .header("x-correlation-id", context.correlationId)
+      .headers({
+        "x-request-id": context.requestId,
+        "x-correlation-id": context.correlationId
+      })
       .send(problem);
   });
 

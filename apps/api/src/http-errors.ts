@@ -1,3 +1,5 @@
+import { STATUS_CODES } from "node:http";
+
 import type { FastifyRequest } from "fastify";
 
 import {
@@ -40,6 +42,14 @@ function hasValidationErrors(error: unknown): error is FastifyValidationError {
 
 function hasStatusCode(error: unknown): error is StatusCodeError {
   return typeof (error as StatusCodeError | undefined)?.statusCode === "number";
+}
+
+function isClientErrorStatusCode(statusCode: number): boolean {
+  return statusCode >= 400 && statusCode < 500;
+}
+
+function hasSharedProblemDefinition(statusCode: number): boolean {
+  return [401, 403, 404, 409, 422].includes(statusCode);
 }
 
 function trimPathSegment(value: string): string {
@@ -119,6 +129,28 @@ function createGenericProblem(
   request: FastifyRequest,
   context: ObservabilityContext
 ): ApiProblemResult {
+  if (
+    hasStatusCode(error) &&
+    isClientErrorStatusCode(error.statusCode ?? 0) &&
+    !hasSharedProblemDefinition(error.statusCode ?? 0)
+  ) {
+    const statusCode = error.statusCode ?? 400;
+    const title = STATUS_CODES[statusCode] ?? "Bad Request";
+
+    return {
+      statusCode,
+      problem: createProblemDetails({
+        type: "https://vision.local/problems/validation-error",
+        title,
+        status: statusCode,
+        code: "validation_error",
+        detail: title,
+        instance: getRequestInstance(request),
+        traceId: context.traceId
+      })
+    };
+  }
+
   const definition = hasStatusCode(error)
     ? getProblemDefinitionForStatus(error.statusCode ?? 500)
     : getProblemDefinitionForStatus(500);

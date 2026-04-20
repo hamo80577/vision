@@ -150,6 +150,102 @@ describe("buildApi", () => {
     await api.close();
   });
 
+  it("keeps malformed JSON as a safe 400 Problem Details response", async () => {
+    const api = buildApi({
+      runtime
+    });
+
+    api.post("/json-parse", async () => ({
+      ok: true
+    }));
+
+    const response = await api.inject({
+      method: "POST",
+      url: "/json-parse",
+      headers: {
+        "content-type": "application/json"
+      },
+      payload: '{"name":'
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.headers["content-type"]).toContain("application/problem+json");
+    expect(response.json()).toEqual({
+      type: "https://vision.local/problems/validation-error",
+      title: "Bad Request",
+      status: 400,
+      code: "validation_error",
+      detail: "Bad Request",
+      instance: "/json-parse"
+    });
+
+    await api.close();
+  });
+
+  it("keeps unsupported media type as a safe 415 Problem Details response", async () => {
+    const api = buildApi({
+      runtime
+    });
+
+    api.post("/unsupported-media", async () => ({
+      ok: true
+    }));
+
+    const response = await api.inject({
+      method: "POST",
+      url: "/unsupported-media",
+      headers: {
+        "content-type": "application/xml"
+      },
+      payload: "<item />"
+    });
+
+    expect(response.statusCode).toBe(415);
+    expect(response.headers["content-type"]).toContain("application/problem+json");
+    expect(response.json()).toEqual({
+      type: "https://vision.local/problems/validation-error",
+      title: "Unsupported Media Type",
+      status: 415,
+      code: "validation_error",
+      detail: "Unsupported Media Type",
+      instance: "/unsupported-media"
+    });
+
+    await api.close();
+  });
+
+  it("reapplies sanitized request headers on the final response even if a route overrides them", async () => {
+    const api = buildApi({
+      runtime
+    });
+
+    api.get("/override-headers", async (_request, reply) => {
+      reply.header("x-request-id", "bad override");
+      reply.header("x-correlation-id", "bad override");
+
+      return {
+        ok: true
+      };
+    });
+
+    const response = await api.inject({
+      method: "GET",
+      url: "/override-headers",
+      headers: {
+        "x-request-id": "bad id",
+        "x-correlation-id": "corr-123"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["x-request-id"]).toEqual(expect.any(String));
+    expect(response.headers["x-request-id"]).not.toBe("bad override");
+    expect(response.headers["x-request-id"]).not.toBe("bad id");
+    expect(response.headers["x-correlation-id"]).toBe("corr-123");
+
+    await api.close();
+  });
+
   it("collapses unexpected errors to a safe 500 payload with no secret leak", async () => {
     const api = buildApi({
       runtime
