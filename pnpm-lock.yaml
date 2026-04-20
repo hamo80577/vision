@@ -44,6 +44,9 @@ importers:
       '@vision/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@vision/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       fastify:
         specifier: latest
         version: 5.8.5
