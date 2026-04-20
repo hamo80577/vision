@@ -41,6 +41,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@vision/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       fastify:
         specifier: latest
         version: 5.8.5

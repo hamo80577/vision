@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@vision/config": "workspace:*",
     "fastify": "latest"
   }
 }
