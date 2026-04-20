@@ -11,14 +11,24 @@ const appEnvironmentSchema = z.enum(["local", "test", "staging", "production"]);
 
 const portSchema = z.coerce.number().int().min(1).max(65535);
 const urlSchema = z.string().url();
+const databaseUrlSchema = urlSchema.refine(
+  (value) => {
+    const protocol = new URL(value).protocol;
+
+    return protocol === "postgres:" || protocol === "postgresql:";
+  },
+  {
+    message: "must use postgres or postgresql protocol",
+  },
+);
 
 const databaseRuntimeEnvSchema = z.object({
   APP_ENV: appEnvironmentSchema,
-  DATABASE_URL: urlSchema,
+  DATABASE_URL: databaseUrlSchema,
 });
 
 const databaseAdminEnvSchema = databaseRuntimeEnvSchema.extend({
-  DATABASE_ADMIN_URL: urlSchema,
+  DATABASE_ADMIN_URL: databaseUrlSchema,
   DATABASE_ADMIN_TARGET_DB: z.string().min(1),
 });
 
@@ -26,12 +36,12 @@ const apiEnvSchema = z.object({
   APP_ENV: appEnvironmentSchema,
   API_HOST: z.string().min(1),
   API_PORT: portSchema,
-  DATABASE_URL: urlSchema,
+  DATABASE_URL: databaseUrlSchema,
 });
 
 const workerEnvSchema = z.object({
   APP_ENV: appEnvironmentSchema,
-  DATABASE_URL: urlSchema,
+  DATABASE_URL: databaseUrlSchema,
 });
 
 const frontendEnvSchema = z.object({
@@ -142,11 +152,10 @@ function assertValidAdminDatabaseUrl(
 ): void {
   assertSafeDatabaseUrl(appEnv, adminDatabaseUrl);
 
-  if (
-    (appEnv === "local" || appEnv === "test") &&
-    getDatabaseName(databaseUrl) === getDatabaseName(adminDatabaseUrl)
-  ) {
-    throw new ConfigError([`${appEnv} DATABASE_ADMIN_URL must point to a maintenance database`]);
+  if (getDatabaseName(adminDatabaseUrl) !== "postgres") {
+    throw new ConfigError([
+      `${appEnv} DATABASE_ADMIN_URL must point to the postgres maintenance database`,
+    ]);
   }
 
   if (adminTargetDatabaseName !== getDatabaseName(databaseUrl)) {

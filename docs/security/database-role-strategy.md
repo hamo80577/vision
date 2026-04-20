@@ -14,7 +14,7 @@ Vision distinguishes between runtime database access and admin database access.
 - `DATABASE_ADMIN_URL` is for maintenance and admin-only operations, especially reset drop/create against the `postgres` maintenance database.
 - `DATABASE_ADMIN_TARGET_DB` identifies the application database name that admin tooling should drop and recreate.
 - In local development it may use the same PostgreSQL role as runtime for practicality.
-- In local and test environments `DATABASE_ADMIN_URL` must target a maintenance database such as `postgres`, not the application database itself.
+- In every environment `DATABASE_ADMIN_URL` must target the `postgres` maintenance database, not the application database itself.
 
 ## Boundary
 

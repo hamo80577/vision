@@ -93,6 +93,15 @@ describe("@vision/config", () => {
     });
   });
 
+  it("rejects non-PostgreSQL database URLs", () => {
+    expect(() =>
+      parseDatabaseRuntimeConfig({
+        APP_ENV: "local",
+        DATABASE_URL: "https://db.example.com/vision_local",
+      }),
+    ).toThrow(ConfigError);
+  });
+
   it("parses database admin config", () => {
     expect(
       parseDatabaseAdminConfig({
@@ -124,6 +133,32 @@ describe("@vision/config", () => {
         APP_ENV: "local",
         DATABASE_URL: localDatabaseUrl,
         DATABASE_ADMIN_URL: localAdminDatabaseUrl,
+      }),
+    ).toThrow(ConfigError);
+  });
+
+  it("fails when production DATABASE_ADMIN_URL targets the application database", () => {
+    const productionDatabaseUrl =
+      "postgresql://vision_service:prod_password@db.internal:5432/vision_prod";
+
+    expect(() =>
+      parseDatabaseAdminConfig({
+        APP_ENV: "production",
+        DATABASE_URL: productionDatabaseUrl,
+        DATABASE_ADMIN_URL: productionDatabaseUrl,
+        DATABASE_ADMIN_TARGET_DB: "vision_prod",
+      }),
+    ).toThrow(ConfigError);
+  });
+
+  it("fails when DATABASE_ADMIN_URL does not target the postgres maintenance database", () => {
+    expect(() =>
+      parseDatabaseAdminConfig({
+        APP_ENV: "local",
+        DATABASE_URL: localDatabaseUrl,
+        DATABASE_ADMIN_URL:
+          "postgresql://vision_local:vision_local_password@localhost:5432/template1",
+        DATABASE_ADMIN_TARGET_DB: "vision_local",
       }),
     ).toThrow(ConfigError);
   });
