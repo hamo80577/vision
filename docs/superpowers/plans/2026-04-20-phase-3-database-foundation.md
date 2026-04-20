@@ -1348,6 +1348,7 @@ jobs:
       API_PORT: 4000
       DATABASE_URL: postgresql://vision_local:vision_local_password@127.0.0.1:5432/vision_local
       DATABASE_ADMIN_URL: postgresql://vision_local:vision_local_password@127.0.0.1:5432/postgres
+      DATABASE_ADMIN_TARGET_DB: vision_local
       NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:4000
 
     steps:
