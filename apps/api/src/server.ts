@@ -20,12 +20,66 @@ export type ApiBuildDependencies = {
   tracer: ObservabilityTracer;
 };
 
+const REQUEST_ID_HEADER = "x-request-id";
+const CORRELATION_ID_HEADER = "x-correlation-id";
+
+function getProtectedHeaderValue(
+  name: string,
+  context: ReturnType<typeof createApiRequestContext>
+): string | undefined {
+  const normalizedName = name.toLowerCase();
+
+  if (normalizedName === REQUEST_ID_HEADER) {
+    return context.requestId;
+  }
+
+  if (normalizedName === CORRELATION_ID_HEADER) {
+    return context.correlationId;
+  }
+
+  return undefined;
+}
+
 function applyResponseContextHeaders(
   reply: FastifyReply,
   context: ReturnType<typeof createApiRequestContext>
 ): void {
-  reply.header("x-request-id", context.requestId);
-  reply.header("x-correlation-id", context.correlationId);
+  reply.header(REQUEST_ID_HEADER, context.requestId);
+  reply.header(CORRELATION_ID_HEADER, context.correlationId);
+}
+
+function protectResponseContextHeaders(
+  reply: FastifyReply,
+  context: ReturnType<typeof createApiRequestContext>
+): void {
+  type ReplyHeaders = NonNullable<Parameters<FastifyReply["headers"]>[0]>;
+
+  const originalHeader = reply.header.bind(reply);
+  const originalHeaders = reply.headers.bind(reply);
+  const originalSetHeader = reply.raw.setHeader.bind(reply.raw);
+
+  reply.header = ((name: string, value: unknown) => {
+    return originalHeader(name, getProtectedHeaderValue(name, context) ?? value);
+  }) as typeof reply.header;
+
+  reply.headers = ((values: ReplyHeaders) => {
+    const nextValues = Object.entries(values).reduce<ReplyHeaders>(
+      (accumulator, [name, value]) => {
+        accumulator[name as keyof ReplyHeaders] = (
+          getProtectedHeaderValue(name, context) ?? value
+        ) as ReplyHeaders[keyof ReplyHeaders];
+
+        return accumulator;
+      },
+      {}
+    );
+
+    return originalHeaders(nextValues);
+  }) as typeof reply.headers;
+
+  reply.raw.setHeader = ((name: string, value: number | string | readonly string[]) => {
+    return originalSetHeader(name, getProtectedHeaderValue(name, context) ?? value);
+  }) as typeof reply.raw.setHeader;
 }
 
 export function buildApi(
@@ -64,6 +118,7 @@ export function buildApi(
     request.observabilityContext = context;
     request.requestLogger = rootLogger.child(context);
 
+    protectResponseContextHeaders(reply, context);
     applyResponseContextHeaders(reply, context);
   });
 

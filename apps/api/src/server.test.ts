@@ -246,6 +246,42 @@ describe("buildApi", () => {
     await api.close();
   });
 
+  it("keeps sanitized request headers final even when a nested plugin onSend overrides them", async () => {
+    const api = buildApi({
+      runtime
+    });
+
+    await api.register(async (plugin) => {
+      plugin.addHook("onSend", async (_request, reply, payload) => {
+        reply.header("x-request-id", "bad plugin override");
+        reply.header("x-correlation-id", "bad plugin override");
+
+        return payload;
+      });
+
+      plugin.get("/plugin-override", async () => ({
+        ok: true
+      }));
+    });
+
+    const response = await api.inject({
+      method: "GET",
+      url: "/plugin-override",
+      headers: {
+        "x-request-id": "bad id",
+        "x-correlation-id": "corr-123"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["x-request-id"]).toEqual(expect.any(String));
+    expect(response.headers["x-request-id"]).not.toBe("bad plugin override");
+    expect(response.headers["x-request-id"]).not.toBe("bad id");
+    expect(response.headers["x-correlation-id"]).toBe("corr-123");
+
+    await api.close();
+  });
+
   it("collapses unexpected errors to a safe 500 payload with no secret leak", async () => {
     const api = buildApi({
       runtime
