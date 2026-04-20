@@ -20,6 +20,8 @@ Real `.env` files are ignored by Git. Keep local values local.
 
 ## PostgreSQL
 
+The Docker service maps container port `5432` to host port `5433` so it can run beside a native PostgreSQL install that already owns `5432`.
+
 Start the local database:
 
 ```powershell
@@ -41,13 +43,13 @@ docker compose down
 The local runtime database URL is:
 
 ```text
-postgresql://vision_local:vision_local_password@localhost:5432/vision_local
+postgresql://vision_local:vision_local_password@localhost:5433/vision_local
 ```
 
 The local admin database URL is:
 
 ```text
-postgresql://vision_local:vision_local_password@localhost:5432/postgres
+postgresql://vision_local:vision_local_password@localhost:5433/postgres
 ```
 
 The local admin target database name is:

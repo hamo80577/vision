@@ -476,8 +476,9 @@ API_HOST=0.0.0.0
 API_PORT=4000
 
 # Database runtime and tooling
-DATABASE_URL=postgresql://vision_local:vision_local_password@localhost:5432/vision_local
-DATABASE_ADMIN_URL=postgresql://vision_local:vision_local_password@localhost:5432/postgres
+DATABASE_URL=postgresql://vision_local:vision_local_password@localhost:5433/vision_local
+DATABASE_ADMIN_URL=postgresql://vision_local:vision_local_password@localhost:5433/postgres
+DATABASE_ADMIN_TARGET_DB=vision_local
 
 # Local PostgreSQL container
 POSTGRES_DB=vision_local
@@ -516,6 +517,8 @@ Real `.env` files are ignored by Git. Keep local values local.
 
 ## PostgreSQL
 
+The Docker service maps container port `5432` to host port `5433` so it can run beside a native PostgreSQL install that already owns `5432`.
+
 Start the local database:
 
 ```powershell
@@ -537,13 +540,19 @@ docker compose down
 The local runtime database URL is:
 
 ```text
-postgresql://vision_local:vision_local_password@localhost:5432/vision_local
+postgresql://vision_local:vision_local_password@localhost:5433/vision_local
 ```
 
 The local admin database URL is:
 
 ```text
-postgresql://vision_local:vision_local_password@localhost:5432/postgres
+postgresql://vision_local:vision_local_password@localhost:5433/postgres
+```
+
+The local admin target database name is:
+
+```text
+vision_local
 ```
 
 These URLs are local-only defaults. They must not be used for staging or production.

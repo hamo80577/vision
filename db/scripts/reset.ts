@@ -19,9 +19,10 @@ function quoteIdentifier(identifier: string): string {
 }
 
 function runPnpmCommand(args: string[]): void {
-  const command = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+  const command = process.platform === "win32" ? "corepack.cmd" : "corepack";
 
-  execFileSync(command, args, {
+  execFileSync(command, ["pnpm", ...args], {
+    shell: process.platform === "win32",
     stdio: "inherit",
   });
 }
