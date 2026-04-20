@@ -10,6 +10,11 @@
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:check": "drizzle-kit check",
+    "db:seed": "tsx db/seeds/seed.ts",
+    "db:reset": "tsx db/scripts/reset.ts",
     "format": "prettier --write ."
   },
   "devDependencies": {
