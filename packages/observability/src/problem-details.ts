@@ -19,8 +19,8 @@ export interface ProblemDetails {
   title: string;
   status: number;
   code: ProblemCode;
-  detail?: string;
-  instance?: string;
+  detail: string;
+  instance: string;
   traceId?: string;
   errors?: ProblemValidationIssue[];
 }
@@ -29,14 +29,14 @@ export type ProblemDetailsInput = Omit<ProblemDetails, "instance"> & {
   instance?: string;
 };
 
-export function sanitizeProblemInstance(value: string | undefined): string | undefined {
+export function sanitizeProblemInstance(value: string | undefined): string {
   if (typeof value !== "string") {
-    return undefined;
+    return "/";
   }
 
   const input = value.trim();
   if (input.length === 0) {
-    return undefined;
+    return "/";
   }
 
   let pathOnly: string;
@@ -49,7 +49,7 @@ export function sanitizeProblemInstance(value: string | undefined): string | und
   }
 
   if (pathOnly.length === 0) {
-    return undefined;
+    return "/";
   }
 
   return pathOnly.startsWith("/") ? pathOnly : `/${pathOnly}`;
@@ -60,17 +60,10 @@ export function createProblemDetails(input: ProblemDetailsInput): ProblemDetails
     type: input.type,
     title: input.title,
     status: input.status,
-    code: input.code
+    code: input.code,
+    detail: input.detail,
+    instance: sanitizeProblemInstance(input.instance)
   };
-
-  if (input.detail !== undefined) {
-    next.detail = input.detail;
-  }
-
-  const instance = sanitizeProblemInstance(input.instance);
-  if (instance !== undefined) {
-    next.instance = instance;
-  }
 
   const traceId = sanitizeObservabilityId(input.traceId);
   if (traceId !== undefined) {

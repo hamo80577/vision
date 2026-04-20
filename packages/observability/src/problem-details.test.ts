@@ -8,9 +8,11 @@ describe("problem-details", () => {
       "/orders/1"
     );
     expect(sanitizeProblemInstance("/orders/2?debug=true")).toBe("/orders/2");
+    expect(sanitizeProblemInstance(undefined)).toBe("/");
+    expect(sanitizeProblemInstance("")).toBe("/");
   });
 
-  it("createProblemDetails builds lightweight problem payload with optional traceId", () => {
+  it("createProblemDetails builds required problem payload with optional traceId", () => {
     const value = createProblemDetails({
       type: "https://vision.dev/problems/not-found",
       title: "Not Found",
@@ -35,10 +37,37 @@ describe("problem-details", () => {
       type: "https://vision.dev/problems/not-found",
       title: "Not Found",
       status: 404,
-      code: "not_found"
+      code: "not_found",
+      detail: "Missing record"
     });
 
     expect(withoutTrace.traceId).toBeUndefined();
+    expect(withoutTrace.instance).toBe("/");
+    expect(withoutTrace.detail).toBe("Missing record");
+  });
+
+  it("always includes a path-only instance", () => {
+    const blankInstance = createProblemDetails({
+      type: "https://vision.dev/problems/not-found",
+      title: "Not Found",
+      status: 404,
+      code: "not_found",
+      detail: "Missing record",
+      instance: "   "
+    });
+
+    expect(blankInstance.instance).toBe("/");
+
+    const fullUrl = createProblemDetails({
+      type: "https://vision.dev/problems/not-found",
+      title: "Not Found",
+      status: 404,
+      code: "not_found",
+      detail: "Missing record",
+      instance: "https://example.com/private/orders/7?token=abc"
+    });
+
+    expect(fullUrl.instance).toBe("/private/orders/7");
   });
 
   it("uses the validation extension shape as errors", () => {
@@ -59,6 +88,7 @@ describe("problem-details", () => {
       title: "Conflict",
       status: 409,
       code: "conflict",
+      detail: "Version mismatch",
       errors: [{ path: "version", message: "Outdated" }]
     });
 

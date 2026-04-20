@@ -45,8 +45,9 @@ describe("logger", () => {
       write: (line) => lines.push(line)
     });
 
-    const error = new Error("boom");
+    const error = new Error("boom") as Error & { statusCode?: number };
     error.stack = "raw stack trace";
+    error.statusCode = 502;
     logger.error("failed", { error, foo: "bar" });
 
     expect(lines).toHaveLength(1);
@@ -55,7 +56,39 @@ describe("logger", () => {
     };
     expect(parsed.meta.error.message).toBe("boom");
     expect(parsed.meta.error).not.toHaveProperty("stack");
+    expect(parsed.meta.error.statusCode).toBe(502);
     expect(parsed.meta.foo).toBe("bar");
+  });
+
+  it("serializes nested Error metadata safely", () => {
+    const lines: string[] = [];
+    const logger = createLogger({
+      service: "api",
+      environment: "test",
+      level: "debug",
+      now: () => new Date("2026-01-01T00:00:00.000Z"),
+      write: (line) => lines.push(line)
+    });
+
+    const nested = new Error("nested boom") as Error & { statusCode?: number };
+    nested.stack = "nested raw stack";
+    nested.statusCode = 503;
+
+    logger.error("nested failure", {
+      payload: {
+        phase: "sync",
+        cause: nested
+      }
+    });
+
+    expect(lines).toHaveLength(1);
+    const parsed = JSON.parse(lines[0]) as {
+      meta: { payload: { phase: string; cause: Record<string, unknown> } };
+    };
+    expect(parsed.meta.payload.phase).toBe("sync");
+    expect(parsed.meta.payload.cause.message).toBe("nested boom");
+    expect(parsed.meta.payload.cause.statusCode).toBe(503);
+    expect(parsed.meta.payload.cause).not.toHaveProperty("stack");
   });
 
   it("filters out messages below configured level", () => {

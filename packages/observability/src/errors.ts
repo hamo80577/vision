@@ -12,7 +12,7 @@ export interface ProblemDefinition {
 }
 
 export type ProblemErrorOptions = ProblemDefinition & {
-  detail?: string;
+  detail: string;
   instance?: string;
   traceId?: string;
   errors?: ProblemDetails["errors"];
@@ -78,7 +78,7 @@ export class ProblemError extends Error {
   readonly problem: ProblemDetails;
 
   constructor(options: ProblemErrorOptions) {
-    super(options.detail ?? options.title);
+    super(options.detail);
     this.name = PROBLEM_ERROR_NAME;
     this.type = options.type;
     this.title = options.title;
@@ -116,6 +116,7 @@ export function serializeErrorForLog(error: unknown): Record<string, unknown> {
     const candidate = error as Error & {
       code?: unknown;
       status?: unknown;
+      statusCode?: unknown;
     };
 
     const serialized: Record<string, unknown> = {
@@ -129,6 +130,10 @@ export function serializeErrorForLog(error: unknown): Record<string, unknown> {
 
     if (typeof candidate.status === "number") {
       serialized.status = candidate.status;
+    }
+
+    if (typeof candidate.statusCode === "number") {
+      serialized.statusCode = candidate.statusCode;
     }
 
     return serialized;
@@ -152,6 +157,10 @@ export function serializeErrorForLog(error: unknown): Record<string, unknown> {
 
     if (typeof record.status === "number") {
       serialized.status = record.status;
+    }
+
+    if (typeof record.statusCode === "number") {
+      serialized.statusCode = record.statusCode;
     }
 
     return serialized;

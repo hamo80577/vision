@@ -61,23 +61,61 @@ function hasKeys(record: Record<string, unknown> | undefined): boolean {
   return record !== undefined && Object.keys(record).length > 0;
 }
 
+function sanitizeMetadataValue(value: unknown): unknown {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (value instanceof Error) {
+    return serializeErrorForLog(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => sanitizeMetadataValue(entry))
+      .filter((entry) => entry !== undefined);
+  }
+
+  if (typeof value === "object") {
+    const normalized: LogMetadata = {};
+
+    for (const [key, candidate] of Object.entries(value as LogMetadata)) {
+      const sanitized = sanitizeMetadataValue(candidate);
+      if (sanitized !== undefined) {
+        normalized[key] = sanitized;
+      }
+    }
+
+    return hasKeys(normalized) ? normalized : undefined;
+  }
+
+  return String(value);
+}
+
 function normalizeMeta(meta: LogMetadata | undefined): LogMetadata | undefined {
   if (meta === undefined) {
     return undefined;
   }
 
-  const normalized: LogMetadata = {};
-
-  for (const [key, value] of Object.entries(meta)) {
-    if (value instanceof Error) {
-      normalized[key] = serializeErrorForLog(value);
-      continue;
-    }
-
-    normalized[key] = value;
+  const normalized = sanitizeMetadataValue(meta);
+  if (normalized && typeof normalized === "object" && !Array.isArray(normalized)) {
+    return normalized as LogMetadata;
   }
 
-  return hasKeys(normalized) ? normalized : undefined;
+  return undefined;
 }
 
 export function createLogger(options: CreateLoggerOptions): VisionLogger {
