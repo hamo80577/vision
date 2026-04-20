@@ -61,7 +61,15 @@ function hasKeys(record: Record<string, unknown> | undefined): boolean {
   return record !== undefined && Object.keys(record).length > 0;
 }
 
-function sanitizeMetadataValue(value: unknown): unknown {
+function isErrorLikeRecord(record: Record<string, unknown>): boolean {
+  const hasStack = typeof record.stack === "string";
+  const hasName = typeof record.name === "string";
+  const hasMessage = typeof record.message === "string";
+
+  return hasStack || (hasName && hasMessage);
+}
+
+function sanitizeMetadataValue(value: unknown, seen: WeakSet<object>): unknown {
   if (value === undefined) {
     return undefined;
   }
@@ -84,21 +92,40 @@ function sanitizeMetadataValue(value: unknown): unknown {
   }
 
   if (Array.isArray(value)) {
-    return value
-      .map((entry) => sanitizeMetadataValue(entry))
+    if (seen.has(value)) {
+      return "[Circular]";
+    }
+
+    seen.add(value);
+    const normalized = value
+      .map((entry) => sanitizeMetadataValue(entry, seen))
       .filter((entry) => entry !== undefined);
+    seen.delete(value);
+
+    return normalized;
   }
 
   if (typeof value === "object") {
+    if (seen.has(value)) {
+      return "[Circular]";
+    }
+
+    const record = value as LogMetadata;
+    if (isErrorLikeRecord(record)) {
+      return serializeErrorForLog(record);
+    }
+
+    seen.add(value);
     const normalized: LogMetadata = {};
 
-    for (const [key, candidate] of Object.entries(value as LogMetadata)) {
-      const sanitized = sanitizeMetadataValue(candidate);
+    for (const [key, candidate] of Object.entries(record)) {
+      const sanitized = sanitizeMetadataValue(candidate, seen);
       if (sanitized !== undefined) {
         normalized[key] = sanitized;
       }
     }
 
+    seen.delete(value);
     return hasKeys(normalized) ? normalized : undefined;
   }
 
@@ -110,7 +137,7 @@ function normalizeMeta(meta: LogMetadata | undefined): LogMetadata | undefined {
     return undefined;
   }
 
-  const normalized = sanitizeMetadataValue(meta);
+  const normalized = sanitizeMetadataValue(meta, new WeakSet<object>());
   if (normalized && typeof normalized === "object" && !Array.isArray(normalized)) {
     return normalized as LogMetadata;
   }

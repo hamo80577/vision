@@ -91,6 +91,61 @@ describe("logger", () => {
     expect(parsed.meta.payload.cause).not.toHaveProperty("stack");
   });
 
+  it("handles circular metadata safely", () => {
+    const lines: string[] = [];
+    const logger = createLogger({
+      service: "api",
+      environment: "test",
+      level: "debug",
+      now: () => new Date("2026-01-01T00:00:00.000Z"),
+      write: (line) => lines.push(line)
+    });
+
+    const circular: Record<string, unknown> = {
+      tag: "root"
+    };
+    circular.self = circular;
+
+    expect(() => logger.info("circular", { circular })).not.toThrow();
+    expect(lines).toHaveLength(1);
+    const parsed = JSON.parse(lines[0]) as {
+      meta: { circular: { tag: string; self: string } };
+    };
+    expect(parsed.meta.circular.tag).toBe("root");
+    expect(parsed.meta.circular.self).toBe("[Circular]");
+  });
+
+  it("redacts stack from error-shaped plain objects", () => {
+    const lines: string[] = [];
+    const logger = createLogger({
+      service: "api",
+      environment: "test",
+      level: "debug",
+      now: () => new Date("2026-01-01T00:00:00.000Z"),
+      write: (line) => lines.push(line)
+    });
+
+    logger.error("plain object error", {
+      error: {
+        name: "Error",
+        message: "plain failure",
+        code: "E_PLAIN",
+        statusCode: 500,
+        stack: "very secret stack"
+      }
+    });
+
+    expect(lines).toHaveLength(1);
+    const parsed = JSON.parse(lines[0]) as {
+      meta: { error: Record<string, unknown> };
+    };
+    expect(parsed.meta.error.name).toBe("Error");
+    expect(parsed.meta.error.message).toBe("plain failure");
+    expect(parsed.meta.error.code).toBe("E_PLAIN");
+    expect(parsed.meta.error.statusCode).toBe(500);
+    expect(parsed.meta.error).not.toHaveProperty("stack");
+  });
+
   it("filters out messages below configured level", () => {
     const lines: string[] = [];
     const logger = createLogger({
