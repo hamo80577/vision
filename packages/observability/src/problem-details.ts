@@ -22,7 +22,7 @@ export interface ProblemDetails {
   detail?: string;
   instance?: string;
   traceId?: string;
-  issues?: ProblemValidationIssue[];
+  errors?: ProblemValidationIssue[];
 }
 
 export type ProblemDetailsInput = Omit<ProblemDetails, "instance"> & {
@@ -77,8 +77,8 @@ export function createProblemDetails(input: ProblemDetailsInput): ProblemDetails
     next.traceId = traceId;
   }
 
-  if (input.issues !== undefined) {
-    next.issues = input.issues;
+  if (input.code === "validation_error" && input.errors !== undefined) {
+    next.errors = input.errors;
   }
 
   return next;

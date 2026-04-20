@@ -1,4 +1,8 @@
-import type { ProblemCode, ProblemDetails } from "./problem-details";
+import {
+  createProblemDetails,
+  type ProblemCode,
+  type ProblemDetails
+} from "./problem-details";
 
 export interface ProblemDefinition {
   status: 401 | 403 | 404 | 409 | 422 | 500;
@@ -11,7 +15,7 @@ export type ProblemErrorOptions = ProblemDefinition & {
   detail?: string;
   instance?: string;
   traceId?: string;
-  issues?: ProblemDetails["issues"];
+  errors?: ProblemDetails["errors"];
 };
 
 const PROBLEM_BASE_URL = "https://vision.local/problems";
@@ -70,7 +74,7 @@ export class ProblemError extends Error {
   readonly title: string;
   readonly status: number;
   readonly code: ProblemCode;
-  readonly issues?: ProblemDetails["issues"];
+  readonly errors?: ProblemDetails["errors"];
   readonly problem: ProblemDetails;
 
   constructor(options: ProblemErrorOptions) {
@@ -80,8 +84,8 @@ export class ProblemError extends Error {
     this.title = options.title;
     this.status = options.status;
     this.code = options.code;
-    this.issues = options.issues;
-    this.problem = {
+    this.errors = options.code === "validation_error" ? options.errors : undefined;
+    this.problem = createProblemDetails({
       type: options.type,
       title: options.title,
       status: options.status,
@@ -89,8 +93,8 @@ export class ProblemError extends Error {
       detail: options.detail,
       instance: options.instance,
       traceId: options.traceId,
-      issues: options.issues
-    };
+      errors: this.errors
+    });
   }
 }
 

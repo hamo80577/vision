@@ -40,4 +40,28 @@ describe("problem-details", () => {
 
     expect(withoutTrace.traceId).toBeUndefined();
   });
+
+  it("uses the validation extension shape as errors", () => {
+    const validation = createProblemDetails({
+      type: "https://vision.dev/problems/validation-error",
+      title: "Validation Error",
+      status: 422,
+      code: "validation_error",
+      detail: "Invalid payload",
+      errors: [{ path: "email", message: "Required" }]
+    });
+
+    expect(validation.errors).toEqual([{ path: "email", message: "Required" }]);
+    expect(validation).not.toHaveProperty("issues");
+
+    const nonValidation = createProblemDetails({
+      type: "https://vision.dev/problems/conflict",
+      title: "Conflict",
+      status: 409,
+      code: "conflict",
+      errors: [{ path: "version", message: "Outdated" }]
+    });
+
+    expect(nonValidation.errors).toBeUndefined();
+  });
 });

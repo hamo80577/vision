@@ -6,7 +6,6 @@ export type LogLevel = "debug" | "info" | "warn" | "error";
 export type LogMetadata = Record<string, unknown>;
 export type LogSink = (line: string) => void;
 export type Clock = () => Date;
-export type LogMeta = LogMetadata;
 
 export interface LogEntry {
   timestamp: string;

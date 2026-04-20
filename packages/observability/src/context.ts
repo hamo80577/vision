@@ -13,6 +13,15 @@ export interface ObservabilityContext {
 
 export type ObservabilityContextInput = Partial<ObservabilityContext>;
 
+function normalizeOptionalString(value: string | undefined): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 export function createObservabilityContext(
   incoming: ObservabilityContextInput = {}
 ): ObservabilityContext {
@@ -23,11 +32,11 @@ export function createObservabilityContext(
     requestId,
     correlationId,
     traceId: sanitizeObservabilityId(incoming.traceId),
-    subject: incoming.subject,
-    tenant: incoming.tenant,
-    branch: incoming.branch,
-    service: incoming.service,
-    environment: incoming.environment
+    subject: normalizeOptionalString(incoming.subject),
+    tenant: normalizeOptionalString(incoming.tenant),
+    branch: normalizeOptionalString(incoming.branch),
+    service: normalizeOptionalString(incoming.service),
+    environment: normalizeOptionalString(incoming.environment)
   };
 }
 
@@ -39,10 +48,12 @@ export function extendObservabilityContext(
     requestId: base.requestId,
     correlationId: base.correlationId,
     traceId: sanitizeObservabilityId(overrides.traceId) ?? base.traceId,
-    subject: overrides.subject ?? base.subject,
-    tenant: overrides.tenant ?? base.tenant,
-    branch: overrides.branch ?? base.branch,
-    service: overrides.service ?? base.service,
-    environment: overrides.environment ?? base.environment
+    subject: normalizeOptionalString(overrides.subject) ?? normalizeOptionalString(base.subject),
+    tenant: normalizeOptionalString(overrides.tenant) ?? normalizeOptionalString(base.tenant),
+    branch: normalizeOptionalString(overrides.branch) ?? normalizeOptionalString(base.branch),
+    service: normalizeOptionalString(overrides.service) ?? normalizeOptionalString(base.service),
+    environment:
+      normalizeOptionalString(overrides.environment) ??
+      normalizeOptionalString(base.environment)
   };
 }
