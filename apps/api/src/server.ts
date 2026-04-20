@@ -23,9 +23,11 @@ export type ApiBuildDependencies = {
 const REQUEST_ID_HEADER = "x-request-id";
 const CORRELATION_ID_HEADER = "x-correlation-id";
 
+type ProtectedContext = ReturnType<typeof createApiRequestContext>;
+
 function getProtectedHeaderValue(
   name: string,
-  context: ReturnType<typeof createApiRequestContext>
+  context: ProtectedContext
 ): string | undefined {
   const normalizedName = name.toLowerCase();
 
@@ -40,9 +42,80 @@ function getProtectedHeaderValue(
   return undefined;
 }
 
+function applyProtectedHeadersToHeaderRecord(
+  headers: Record<string, unknown>,
+  context: ProtectedContext
+): Record<string, unknown> {
+  return {
+    ...headers,
+    [REQUEST_ID_HEADER]: context.requestId,
+    [CORRELATION_ID_HEADER]: context.correlationId
+  };
+}
+
+function applyProtectedHeadersToRawHeaderPairs(
+  headers: readonly unknown[],
+  context: ProtectedContext
+): unknown[] {
+  const nextHeaders = [...headers];
+  let sawRequestId = false;
+  let sawCorrelationId = false;
+
+  for (let index = 0; index < nextHeaders.length - 1; index += 2) {
+    const name = nextHeaders[index];
+
+    if (typeof name !== "string") {
+      continue;
+    }
+
+    const protectedValue = getProtectedHeaderValue(name, context);
+    if (protectedValue === undefined) {
+      continue;
+    }
+
+    nextHeaders[index + 1] = protectedValue;
+
+    if (name.toLowerCase() === REQUEST_ID_HEADER) {
+      sawRequestId = true;
+    }
+
+    if (name.toLowerCase() === CORRELATION_ID_HEADER) {
+      sawCorrelationId = true;
+    }
+  }
+
+  if (!sawRequestId) {
+    nextHeaders.push(REQUEST_ID_HEADER, context.requestId);
+  }
+
+  if (!sawCorrelationId) {
+    nextHeaders.push(CORRELATION_ID_HEADER, context.correlationId);
+  }
+
+  return nextHeaders;
+}
+
+function applyProtectedHeadersToWriteHeadArgument(
+  headers: unknown,
+  context: ProtectedContext
+): unknown {
+  if (Array.isArray(headers)) {
+    return applyProtectedHeadersToRawHeaderPairs(headers, context);
+  }
+
+  if (headers && typeof headers === "object") {
+    return applyProtectedHeadersToHeaderRecord(
+      headers as Record<string, unknown>,
+      context
+    );
+  }
+
+  return headers;
+}
+
 function applyResponseContextHeaders(
   reply: FastifyReply,
-  context: ReturnType<typeof createApiRequestContext>
+  context: ProtectedContext
 ): void {
   reply.header(REQUEST_ID_HEADER, context.requestId);
   reply.header(CORRELATION_ID_HEADER, context.correlationId);
@@ -50,17 +123,31 @@ function applyResponseContextHeaders(
 
 function protectResponseContextHeaders(
   reply: FastifyReply,
-  context: ReturnType<typeof createApiRequestContext>
+  context: ProtectedContext
 ): void {
   type ReplyHeaders = NonNullable<Parameters<FastifyReply["headers"]>[0]>;
 
   const originalHeader = reply.header.bind(reply);
+  const originalRemoveHeader = reply.removeHeader.bind(reply);
   const originalHeaders = reply.headers.bind(reply);
   const originalSetHeader = reply.raw.setHeader.bind(reply.raw);
+  const originalRawRemoveHeader = reply.raw.removeHeader.bind(reply.raw);
+  const originalWriteHead = reply.raw.writeHead.bind(reply.raw);
 
   reply.header = ((name: string, value: unknown) => {
     return originalHeader(name, getProtectedHeaderValue(name, context) ?? value);
   }) as typeof reply.header;
+
+  reply.removeHeader = ((name: string) => {
+    const protectedValue = getProtectedHeaderValue(name, context);
+
+    if (protectedValue !== undefined) {
+      originalHeader(name, protectedValue);
+      return reply;
+    }
+
+    return originalRemoveHeader(name);
+  }) as typeof reply.removeHeader;
 
   reply.headers = ((values: ReplyHeaders) => {
     const nextValues = Object.entries(values).reduce<ReplyHeaders>(
@@ -80,6 +167,27 @@ function protectResponseContextHeaders(
   reply.raw.setHeader = ((name: string, value: number | string | readonly string[]) => {
     return originalSetHeader(name, getProtectedHeaderValue(name, context) ?? value);
   }) as typeof reply.raw.setHeader;
+
+  reply.raw.removeHeader = ((name: string) => {
+    const protectedValue = getProtectedHeaderValue(name, context);
+
+    if (protectedValue !== undefined) {
+      originalSetHeader(name, protectedValue);
+      return reply.raw;
+    }
+
+    return originalRawRemoveHeader(name);
+  }) as typeof reply.raw.removeHeader;
+
+  reply.raw.writeHead = ((...args: unknown[]) => {
+    if (args.length >= 3) {
+      args[2] = applyProtectedHeadersToWriteHeadArgument(args[2], context);
+    } else if (args.length >= 2 && typeof args[1] !== "string") {
+      args[1] = applyProtectedHeadersToWriteHeadArgument(args[1], context);
+    }
+
+    return originalWriteHead(...(args as Parameters<typeof reply.raw.writeHead>));
+  }) as typeof reply.raw.writeHead;
 }
 
 export function buildApi(
