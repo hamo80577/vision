@@ -1,8 +1,7 @@
-export function getWorkerStatus() {
-  return {
-    service: "vision-worker",
-    status: "idle"
-  } as const;
-}
+import { parseWorkerConfig } from "@vision/config";
 
-console.log(JSON.stringify(getWorkerStatus()));
+import { getWorkerStatus } from "./status";
+
+const config = parseWorkerConfig(process.env);
+
+console.log(JSON.stringify(getWorkerStatus(config.appEnv)));
