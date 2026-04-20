@@ -7,40 +7,36 @@ const localDatabaseAdminUrl =
 const localDatabaseUser = "vision_local";
 const localDatabasePassword = "vision_local_password";
 
-const appEnvironmentSchema = z.enum([
-  "local",
-  "test",
-  "staging",
-  "production"
-]);
+const appEnvironmentSchema = z.enum(["local", "test", "staging", "production"]);
 
 const portSchema = z.coerce.number().int().min(1).max(65535);
 const urlSchema = z.string().url();
 
 const databaseRuntimeEnvSchema = z.object({
   APP_ENV: appEnvironmentSchema,
-  DATABASE_URL: urlSchema
+  DATABASE_URL: urlSchema,
 });
 
 const databaseAdminEnvSchema = databaseRuntimeEnvSchema.extend({
-  DATABASE_ADMIN_URL: urlSchema
+  DATABASE_ADMIN_URL: urlSchema,
+  DATABASE_ADMIN_TARGET_DB: z.string().min(1),
 });
 
 const apiEnvSchema = z.object({
   APP_ENV: appEnvironmentSchema,
   API_HOST: z.string().min(1),
   API_PORT: portSchema,
-  DATABASE_URL: urlSchema
+  DATABASE_URL: urlSchema,
 });
 
 const workerEnvSchema = z.object({
   APP_ENV: appEnvironmentSchema,
-  DATABASE_URL: urlSchema
+  DATABASE_URL: urlSchema,
 });
 
 const frontendEnvSchema = z.object({
   APP_ENV: appEnvironmentSchema,
-  NEXT_PUBLIC_API_BASE_URL: urlSchema
+  NEXT_PUBLIC_API_BASE_URL: urlSchema,
 });
 
 export type AppEnvironment = z.infer<typeof appEnvironmentSchema>;
@@ -66,6 +62,7 @@ export type DatabaseRuntimeConfig = {
 
 export type DatabaseAdminConfig = DatabaseRuntimeConfig & {
   adminDatabaseUrl: string;
+  adminTargetDatabaseName: string;
 };
 
 export type FrontendConfig = {
@@ -116,10 +113,7 @@ function getDatabaseName(databaseUrl: string): string {
   return databaseName;
 }
 
-function assertSafeDatabaseUrl(
-  appEnv: AppEnvironment,
-  databaseUrl: string
-): void {
+function assertSafeDatabaseUrl(appEnv: AppEnvironment, databaseUrl: string): void {
   if (appEnv !== "staging" && appEnv !== "production") {
     return;
   }
@@ -136,16 +130,15 @@ function assertSafeDatabaseUrl(
     (parsedUrl.hostname === "localhost" && databaseName === "vision_local");
 
   if (usesLocalDefaults) {
-    throw new ConfigError([
-      `${appEnv} DATABASE_URL must not use local database defaults`
-    ]);
+    throw new ConfigError([`${appEnv} DATABASE_URL must not use local database defaults`]);
   }
 }
 
 function assertValidAdminDatabaseUrl(
   appEnv: AppEnvironment,
   databaseUrl: string,
-  adminDatabaseUrl: string
+  adminDatabaseUrl: string,
+  adminTargetDatabaseName: string,
 ): void {
   assertSafeDatabaseUrl(appEnv, adminDatabaseUrl);
 
@@ -153,41 +146,41 @@ function assertValidAdminDatabaseUrl(
     (appEnv === "local" || appEnv === "test") &&
     getDatabaseName(databaseUrl) === getDatabaseName(adminDatabaseUrl)
   ) {
-    throw new ConfigError([
-      `${appEnv} DATABASE_ADMIN_URL must point to a maintenance database`
-    ]);
+    throw new ConfigError([`${appEnv} DATABASE_ADMIN_URL must point to a maintenance database`]);
+  }
+
+  if (adminTargetDatabaseName !== getDatabaseName(databaseUrl)) {
+    throw new ConfigError([`${appEnv} DATABASE_ADMIN_TARGET_DB must match DATABASE_URL`]);
   }
 }
 
-export function parseDatabaseRuntimeConfig(
-  env: RuntimeEnv
-): DatabaseRuntimeConfig {
+export function parseDatabaseRuntimeConfig(env: RuntimeEnv): DatabaseRuntimeConfig {
   const parsed = parseEnv(databaseRuntimeEnvSchema, env);
 
   assertSafeDatabaseUrl(parsed.APP_ENV, parsed.DATABASE_URL);
 
   return {
     appEnv: parsed.APP_ENV,
-    databaseUrl: parsed.DATABASE_URL
+    databaseUrl: parsed.DATABASE_URL,
   };
 }
 
-export function parseDatabaseAdminConfig(
-  env: RuntimeEnv
-): DatabaseAdminConfig {
+export function parseDatabaseAdminConfig(env: RuntimeEnv): DatabaseAdminConfig {
   const parsed = parseEnv(databaseAdminEnvSchema, env);
 
   assertSafeDatabaseUrl(parsed.APP_ENV, parsed.DATABASE_URL);
   assertValidAdminDatabaseUrl(
     parsed.APP_ENV,
     parsed.DATABASE_URL,
-    parsed.DATABASE_ADMIN_URL
+    parsed.DATABASE_ADMIN_URL,
+    parsed.DATABASE_ADMIN_TARGET_DB,
   );
 
   return {
     appEnv: parsed.APP_ENV,
     databaseUrl: parsed.DATABASE_URL,
-    adminDatabaseUrl: parsed.DATABASE_ADMIN_URL
+    adminDatabaseUrl: parsed.DATABASE_ADMIN_URL,
+    adminTargetDatabaseName: parsed.DATABASE_ADMIN_TARGET_DB,
   };
 }
 
@@ -200,7 +193,7 @@ export function parseApiConfig(env: RuntimeEnv): ApiConfig {
     appEnv: parsed.APP_ENV,
     host: parsed.API_HOST,
     port: parsed.API_PORT,
-    databaseUrl: parsed.DATABASE_URL
+    databaseUrl: parsed.DATABASE_URL,
   };
 }
 
@@ -211,7 +204,7 @@ export function parseWorkerConfig(env: RuntimeEnv): WorkerConfig {
 
   return {
     appEnv: parsed.APP_ENV,
-    databaseUrl: parsed.DATABASE_URL
+    databaseUrl: parsed.DATABASE_URL,
   };
 }
 
@@ -220,7 +213,7 @@ function parseFrontendConfig(env: RuntimeEnv): FrontendConfig {
 
   return {
     appEnv: parsed.APP_ENV,
-    publicApiBaseUrl: parsed.NEXT_PUBLIC_API_BASE_URL
+    publicApiBaseUrl: parsed.NEXT_PUBLIC_API_BASE_URL,
   };
 }
 

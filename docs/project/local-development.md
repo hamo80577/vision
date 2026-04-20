@@ -50,6 +50,12 @@ The local admin database URL is:
 postgresql://vision_local:vision_local_password@localhost:5432/postgres
 ```
 
+The local admin target database name is:
+
+```text
+vision_local
+```
+
 These URLs are local-only defaults. They must not be used for staging or production.
 
 ## Install
@@ -65,7 +71,7 @@ corepack pnpm install
 Generate a named migration after changing schema files:
 
 ```powershell
-corepack pnpm db:generate -- --name=your_change_name
+corepack pnpm db:generate --name=your_change_name
 ```
 
 Apply migrations:

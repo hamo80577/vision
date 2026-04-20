@@ -4,7 +4,7 @@
 
 **Goal:** Build Vision Phase 3 database foundation with a real `@vision/db` package, Drizzle-based schema and migrations, local reset/reseed tooling, and CI migration validation without introducing business-domain tables.
 
-**Architecture:** `@vision/config` remains the single environment-contract boundary, now extended to cover runtime and admin database URLs. `@vision/db` becomes the infrastructure-only database package, while root Drizzle tooling and `db/` scripts own migration generation, migration application, seeding, and destructive local reset in local or test environments only.
+**Architecture:** `@vision/config` remains the single environment-contract boundary, now extended to cover runtime and admin database URLs plus the admin target database name. `@vision/db` becomes the infrastructure-only database package, while root Drizzle tooling and `db/` scripts own migration generation, migration application, seeding, and destructive local reset in local or test environments only.
 
 **Tech Stack:** PostgreSQL, Drizzle ORM, Drizzle Kit, `pg`, TypeScript, Vitest, tsx, pnpm, Turborepo, GitHub Actions.
 
@@ -13,10 +13,10 @@
 ## File Map
 
 - Modify `package.json`: add root DB scripts and `drizzle-kit` dev dependency.
-- Modify `.env.example`: add `DATABASE_ADMIN_URL`.
+- Modify `.env.example`: add `DATABASE_ADMIN_URL` and `DATABASE_ADMIN_TARGET_DB`.
 - Modify `docs/project/local-development.md`: add migrate/reset/seed workflow.
 - Modify `packages/config/src/index.ts`: add database runtime/admin config parsers.
-- Modify `packages/config/src/index.test.ts`: add tests for `DATABASE_ADMIN_URL` and admin/runtime split.
+- Modify `packages/config/src/index.test.ts`: add tests for `DATABASE_ADMIN_URL`, `DATABASE_ADMIN_TARGET_DB`, and admin/runtime split.
 - Modify `packages/db/package.json`: add real dependencies and require real tests.
 - Replace `packages/db/src/index.ts`: export the real DB package surface.
 - Create `packages/db/src/config.ts`: bridge validated env parsing into `@vision/db`.
@@ -30,7 +30,7 @@
 - Create `packages/db/src/schema/index.ts`: export schema objects.
 - Create `drizzle.config.ts`: configure Drizzle Kit for the repo.
 - Create `db/seeds/seed.ts`: deterministic infrastructure-only seed script.
-- Create `db/scripts/reset.ts`: destructive local/test reset script using `DATABASE_ADMIN_URL`.
+- Create `db/scripts/reset.ts`: destructive local/test reset script using `DATABASE_ADMIN_URL` and `DATABASE_ADMIN_TARGET_DB`.
 - Create generated `db/migrations/0000_phase_3_baseline.sql`.
 - Create generated `db/migrations/meta/0000_snapshot.json`.
 - Create or update generated `db/migrations/meta/_journal.json`.
@@ -51,6 +51,7 @@
 ## Task 1: Extend Runtime Config For Database Tooling
 
 **Files:**
+
 - Modify: `.env.example`
 - Modify: `docs/project/local-development.md`
 - Modify: `packages/config/src/index.ts`
@@ -72,7 +73,7 @@ import {
   parseErpConfig,
   parsePlatformConfig,
   parseWebConfig,
-  parseWorkerConfig
+  parseWorkerConfig,
 } from "./index";
 
 const localDatabaseUrl =
@@ -84,12 +85,12 @@ const validApiEnv = {
   APP_ENV: "local",
   API_HOST: "127.0.0.1",
   API_PORT: "4000",
-  DATABASE_URL: localDatabaseUrl
+  DATABASE_URL: localDatabaseUrl,
 };
 
 const validFrontendEnv = {
   APP_ENV: "local",
-  NEXT_PUBLIC_API_BASE_URL: "http://localhost:4000"
+  NEXT_PUBLIC_API_BASE_URL: "http://localhost:4000",
 };
 
 describe("@vision/config", () => {
@@ -98,13 +99,12 @@ describe("@vision/config", () => {
       appEnv: "local",
       host: "127.0.0.1",
       port: 4000,
-      databaseUrl: localDatabaseUrl
+      databaseUrl: localDatabaseUrl,
     });
   });
 
   it("fails when DATABASE_URL is missing for API config", () => {
-    const { DATABASE_URL: _databaseUrl, ...missingDatabaseUrlEnv } =
-      validApiEnv;
+    const { DATABASE_URL: _databaseUrl, ...missingDatabaseUrlEnv } = validApiEnv;
 
     expect(() => parseApiConfig(missingDatabaseUrlEnv)).toThrow(ConfigError);
   });
@@ -113,8 +113,8 @@ describe("@vision/config", () => {
     expect(() =>
       parseApiConfig({
         ...validApiEnv,
-        API_PORT: "99999"
-      })
+        API_PORT: "99999",
+      }),
     ).toThrow(ConfigError);
   });
 
@@ -123,8 +123,8 @@ describe("@vision/config", () => {
       parseApiConfig({
         ...validApiEnv,
         APP_ENV: "production",
-        API_HOST: "0.0.0.0"
-      })
+        API_HOST: "0.0.0.0",
+      }),
     ).toThrow(ConfigError);
   });
 
@@ -132,9 +132,8 @@ describe("@vision/config", () => {
     expect(() =>
       parseWorkerConfig({
         APP_ENV: "production",
-        DATABASE_URL:
-          "postgresql://vision_service:vision_local_password@db.internal:5432/vision"
-      })
+        DATABASE_URL: "postgresql://vision_service:vision_local_password@db.internal:5432/vision",
+      }),
     ).toThrow(ConfigError);
   });
 
@@ -142,9 +141,8 @@ describe("@vision/config", () => {
     expect(() =>
       parseWorkerConfig({
         APP_ENV: "staging",
-        DATABASE_URL:
-          "postgresql://vision_local:staging_password@db.internal:5432/vision"
-      })
+        DATABASE_URL: "postgresql://vision_local:staging_password@db.internal:5432/vision",
+      }),
     ).toThrow(ConfigError);
   });
 
@@ -152,13 +150,11 @@ describe("@vision/config", () => {
     expect(
       parseDatabaseRuntimeConfig({
         APP_ENV: "test",
-        DATABASE_URL:
-          "postgresql://vision_test:test_password@localhost:5432/vision_test"
-      })
+        DATABASE_URL: "postgresql://vision_test:test_password@localhost:5432/vision_test",
+      }),
     ).toEqual({
       appEnv: "test",
-      databaseUrl:
-        "postgresql://vision_test:test_password@localhost:5432/vision_test"
+      databaseUrl: "postgresql://vision_test:test_password@localhost:5432/vision_test",
     });
   });
 
@@ -167,12 +163,12 @@ describe("@vision/config", () => {
       parseDatabaseAdminConfig({
         APP_ENV: "local",
         DATABASE_URL: localDatabaseUrl,
-        DATABASE_ADMIN_URL: localAdminDatabaseUrl
-      })
+        DATABASE_ADMIN_URL: localAdminDatabaseUrl,
+      }),
     ).toEqual({
       appEnv: "local",
       databaseUrl: localDatabaseUrl,
-      adminDatabaseUrl: localAdminDatabaseUrl
+      adminDatabaseUrl: localAdminDatabaseUrl,
     });
   });
 
@@ -180,8 +176,8 @@ describe("@vision/config", () => {
     expect(() =>
       parseDatabaseAdminConfig({
         APP_ENV: "local",
-        DATABASE_URL: localDatabaseUrl
-      })
+        DATABASE_URL: localDatabaseUrl,
+      }),
     ).toThrow(ConfigError);
   });
 
@@ -190,8 +186,8 @@ describe("@vision/config", () => {
       parseDatabaseAdminConfig({
         APP_ENV: "local",
         DATABASE_URL: localDatabaseUrl,
-        DATABASE_ADMIN_URL: localDatabaseUrl
-      })
+        DATABASE_ADMIN_URL: localDatabaseUrl,
+      }),
     ).toThrow(ConfigError);
   });
 
@@ -199,25 +195,23 @@ describe("@vision/config", () => {
     expect(
       parseWorkerConfig({
         APP_ENV: "test",
-        DATABASE_URL:
-          "postgresql://vision_test:test_password@localhost:5432/vision_test"
-      })
+        DATABASE_URL: "postgresql://vision_test:test_password@localhost:5432/vision_test",
+      }),
     ).toEqual({
       appEnv: "test",
-      databaseUrl:
-        "postgresql://vision_test:test_password@localhost:5432/vision_test"
+      databaseUrl: "postgresql://vision_test:test_password@localhost:5432/vision_test",
     });
   });
 
   it("parses frontend config from public variables only", () => {
     const config = parseWebConfig({
       ...validFrontendEnv,
-      DATABASE_URL: localDatabaseUrl
+      DATABASE_URL: localDatabaseUrl,
     });
 
     expect(config).toEqual({
       appEnv: "local",
-      publicApiBaseUrl: "http://localhost:4000"
+      publicApiBaseUrl: "http://localhost:4000",
     });
     expect("databaseUrl" in config).toBe(false);
   });
@@ -225,11 +219,11 @@ describe("@vision/config", () => {
   it("uses the same public frontend contract for ERP and platform apps", () => {
     expect(parseErpConfig(validFrontendEnv)).toEqual({
       appEnv: "local",
-      publicApiBaseUrl: "http://localhost:4000"
+      publicApiBaseUrl: "http://localhost:4000",
     });
     expect(parsePlatformConfig(validFrontendEnv)).toEqual({
       appEnv: "local",
-      publicApiBaseUrl: "http://localhost:4000"
+      publicApiBaseUrl: "http://localhost:4000",
     });
   });
 });
@@ -259,40 +253,35 @@ const localDatabaseAdminUrl =
 const localDatabaseUser = "vision_local";
 const localDatabasePassword = "vision_local_password";
 
-const appEnvironmentSchema = z.enum([
-  "local",
-  "test",
-  "staging",
-  "production"
-]);
+const appEnvironmentSchema = z.enum(["local", "test", "staging", "production"]);
 
 const portSchema = z.coerce.number().int().min(1).max(65535);
 const urlSchema = z.string().url();
 
 const databaseRuntimeEnvSchema = z.object({
   APP_ENV: appEnvironmentSchema,
-  DATABASE_URL: urlSchema
+  DATABASE_URL: urlSchema,
 });
 
 const databaseAdminEnvSchema = databaseRuntimeEnvSchema.extend({
-  DATABASE_ADMIN_URL: urlSchema
+  DATABASE_ADMIN_URL: urlSchema,
 });
 
 const apiEnvSchema = z.object({
   APP_ENV: appEnvironmentSchema,
   API_HOST: z.string().min(1),
   API_PORT: portSchema,
-  DATABASE_URL: urlSchema
+  DATABASE_URL: urlSchema,
 });
 
 const workerEnvSchema = z.object({
   APP_ENV: appEnvironmentSchema,
-  DATABASE_URL: urlSchema
+  DATABASE_URL: urlSchema,
 });
 
 const frontendEnvSchema = z.object({
   APP_ENV: appEnvironmentSchema,
-  NEXT_PUBLIC_API_BASE_URL: urlSchema
+  NEXT_PUBLIC_API_BASE_URL: urlSchema,
 });
 
 export type AppEnvironment = z.infer<typeof appEnvironmentSchema>;
@@ -368,10 +357,7 @@ function getDatabaseName(databaseUrl: string): string {
   return databaseName;
 }
 
-function assertSafeDatabaseUrl(
-  appEnv: AppEnvironment,
-  databaseUrl: string
-): void {
+function assertSafeDatabaseUrl(appEnv: AppEnvironment, databaseUrl: string): void {
   if (appEnv !== "staging" && appEnv !== "production") {
     return;
   }
@@ -388,16 +374,14 @@ function assertSafeDatabaseUrl(
     (parsedUrl.hostname === "localhost" && databaseName === "vision_local");
 
   if (usesLocalDefaults) {
-    throw new ConfigError([
-      `${appEnv} DATABASE_URL must not use local database defaults`
-    ]);
+    throw new ConfigError([`${appEnv} DATABASE_URL must not use local database defaults`]);
   }
 }
 
 function assertValidAdminDatabaseUrl(
   appEnv: AppEnvironment,
   databaseUrl: string,
-  adminDatabaseUrl: string
+  adminDatabaseUrl: string,
 ): void {
   assertSafeDatabaseUrl(appEnv, adminDatabaseUrl);
 
@@ -405,41 +389,31 @@ function assertValidAdminDatabaseUrl(
     (appEnv === "local" || appEnv === "test") &&
     getDatabaseName(databaseUrl) === getDatabaseName(adminDatabaseUrl)
   ) {
-    throw new ConfigError([
-      `${appEnv} DATABASE_ADMIN_URL must point to a maintenance database`
-    ]);
+    throw new ConfigError([`${appEnv} DATABASE_ADMIN_URL must point to a maintenance database`]);
   }
 }
 
-export function parseDatabaseRuntimeConfig(
-  env: RuntimeEnv
-): DatabaseRuntimeConfig {
+export function parseDatabaseRuntimeConfig(env: RuntimeEnv): DatabaseRuntimeConfig {
   const parsed = parseEnv(databaseRuntimeEnvSchema, env);
 
   assertSafeDatabaseUrl(parsed.APP_ENV, parsed.DATABASE_URL);
 
   return {
     appEnv: parsed.APP_ENV,
-    databaseUrl: parsed.DATABASE_URL
+    databaseUrl: parsed.DATABASE_URL,
   };
 }
 
-export function parseDatabaseAdminConfig(
-  env: RuntimeEnv
-): DatabaseAdminConfig {
+export function parseDatabaseAdminConfig(env: RuntimeEnv): DatabaseAdminConfig {
   const parsed = parseEnv(databaseAdminEnvSchema, env);
 
   assertSafeDatabaseUrl(parsed.APP_ENV, parsed.DATABASE_URL);
-  assertValidAdminDatabaseUrl(
-    parsed.APP_ENV,
-    parsed.DATABASE_URL,
-    parsed.DATABASE_ADMIN_URL
-  );
+  assertValidAdminDatabaseUrl(parsed.APP_ENV, parsed.DATABASE_URL, parsed.DATABASE_ADMIN_URL);
 
   return {
     appEnv: parsed.APP_ENV,
     databaseUrl: parsed.DATABASE_URL,
-    adminDatabaseUrl: parsed.DATABASE_ADMIN_URL
+    adminDatabaseUrl: parsed.DATABASE_ADMIN_URL,
   };
 }
 
@@ -452,7 +426,7 @@ export function parseApiConfig(env: RuntimeEnv): ApiConfig {
     appEnv: parsed.APP_ENV,
     host: parsed.API_HOST,
     port: parsed.API_PORT,
-    databaseUrl: parsed.DATABASE_URL
+    databaseUrl: parsed.DATABASE_URL,
   };
 }
 
@@ -463,7 +437,7 @@ export function parseWorkerConfig(env: RuntimeEnv): WorkerConfig {
 
   return {
     appEnv: parsed.APP_ENV,
-    databaseUrl: parsed.DATABASE_URL
+    databaseUrl: parsed.DATABASE_URL,
   };
 }
 
@@ -472,7 +446,7 @@ function parseFrontendConfig(env: RuntimeEnv): FrontendConfig {
 
   return {
     appEnv: parsed.APP_ENV,
-    publicApiBaseUrl: parsed.NEXT_PUBLIC_API_BASE_URL
+    publicApiBaseUrl: parsed.NEXT_PUBLIC_API_BASE_URL,
   };
 }
 
@@ -518,7 +492,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:4000
 
 Replace `docs/project/local-development.md` with this exact content:
 
-```markdown
+````markdown
 # Local Development
 
 Vision local development uses pnpm, Docker Compose, and a local PostgreSQL container.
@@ -536,6 +510,7 @@ Create a local environment file from the tracked example:
 ```powershell
 Copy-Item .env.example .env
 ```
+````
 
 Real `.env` files are ignored by Git. Keep local values local.
 
@@ -628,7 +603,8 @@ corepack pnpm test
 ```
 
 Run all three before handing off a development change.
-```
+
+````
 
 - [ ] **Step 6: Run config tests, typecheck, and lint**
 
@@ -638,7 +614,7 @@ Run:
 corepack pnpm --filter @vision/config test
 corepack pnpm --filter @vision/config typecheck
 corepack pnpm --filter @vision/config lint
-```
+````
 
 Expected: all three commands exit with code 0.
 
@@ -656,6 +632,7 @@ Expected: commit succeeds.
 ## Task 2: Create Failing `@vision/db` Package Tests And Dependencies
 
 **Files:**
+
 - Modify: `packages/db/package.json`
 - Create: `packages/db/src/config.test.ts`
 - Create: `packages/db/src/health.test.ts`
@@ -707,23 +684,18 @@ Create `packages/db/src/config.test.ts` with this exact content:
 ```ts
 import { describe, expect, it } from "vitest";
 
-import {
-  getDatabaseAdminConfig,
-  getDatabaseRuntimeConfig
-} from "./config";
+import { getDatabaseAdminConfig, getDatabaseRuntimeConfig } from "./config";
 
 describe("@vision/db config helpers", () => {
   it("reads runtime database config from validated env", () => {
     expect(
       getDatabaseRuntimeConfig({
         APP_ENV: "local",
-        DATABASE_URL:
-          "postgresql://vision_local:vision_local_password@localhost:5432/vision_local"
-      })
+        DATABASE_URL: "postgresql://vision_local:vision_local_password@localhost:5432/vision_local",
+      }),
     ).toEqual({
       appEnv: "local",
-      databaseUrl:
-        "postgresql://vision_local:vision_local_password@localhost:5432/vision_local"
+      databaseUrl: "postgresql://vision_local:vision_local_password@localhost:5432/vision_local",
     });
   });
 
@@ -731,17 +703,14 @@ describe("@vision/db config helpers", () => {
     expect(
       getDatabaseAdminConfig({
         APP_ENV: "local",
-        DATABASE_URL:
-          "postgresql://vision_local:vision_local_password@localhost:5432/vision_local",
+        DATABASE_URL: "postgresql://vision_local:vision_local_password@localhost:5432/vision_local",
         DATABASE_ADMIN_URL:
-          "postgresql://vision_local:vision_local_password@localhost:5432/postgres"
-      })
+          "postgresql://vision_local:vision_local_password@localhost:5432/postgres",
+      }),
     ).toEqual({
       appEnv: "local",
-      databaseUrl:
-        "postgresql://vision_local:vision_local_password@localhost:5432/vision_local",
-      adminDatabaseUrl:
-        "postgresql://vision_local:vision_local_password@localhost:5432/postgres"
+      databaseUrl: "postgresql://vision_local:vision_local_password@localhost:5432/vision_local",
+      adminDatabaseUrl: "postgresql://vision_local:vision_local_password@localhost:5432/postgres",
     });
   });
 });
@@ -759,16 +728,16 @@ import { checkDatabaseHealth } from "./health";
 describe("checkDatabaseHealth", () => {
   it("returns ok when the database responds to select 1", async () => {
     const execute = vi.fn().mockResolvedValue({
-      rows: [{ ok: 1 }]
+      rows: [{ ok: 1 }],
     });
 
     await expect(
       checkDatabaseHealth({
-        execute
-      } as never)
+        execute,
+      } as never),
     ).resolves.toEqual({
       status: "ok",
-      ok: true
+      ok: true,
     });
 
     expect(execute).toHaveBeenCalledTimes(1);
@@ -788,16 +757,16 @@ import { withDatabaseTransaction } from "./transactions";
 describe("withDatabaseTransaction", () => {
   it("delegates to the database transaction API", async () => {
     const transaction = vi.fn(async (callback: (tx: string) => Promise<string>) =>
-      callback("tx-marker")
+      callback("tx-marker"),
     );
 
     await expect(
       withDatabaseTransaction(
         {
-          transaction
+          transaction,
         },
-        async (tx) => `${tx}:complete`
-      )
+        async (tx) => `${tx}:complete`,
+      ),
     ).resolves.toBe("tx-marker:complete");
 
     expect(transaction).toHaveBeenCalledTimes(1);
@@ -818,6 +787,7 @@ Expected: FAIL because `packages/db/src/config.ts`, `packages/db/src/health.ts`,
 ## Task 3: Implement The `@vision/db` Package
 
 **Files:**
+
 - Replace: `packages/db/src/index.ts`
 - Create: `packages/db/src/config.ts`
 - Create: `packages/db/src/client.ts`
@@ -836,20 +806,16 @@ import {
   parseDatabaseRuntimeConfig,
   type DatabaseAdminConfig,
   type DatabaseRuntimeConfig,
-  type RuntimeEnv
+  type RuntimeEnv,
 } from "@vision/config";
 
 export type { DatabaseAdminConfig, DatabaseRuntimeConfig };
 
-export function getDatabaseRuntimeConfig(
-  env: RuntimeEnv = process.env
-): DatabaseRuntimeConfig {
+export function getDatabaseRuntimeConfig(env: RuntimeEnv = process.env): DatabaseRuntimeConfig {
   return parseDatabaseRuntimeConfig(env);
 }
 
-export function getDatabaseAdminConfig(
-  env: RuntimeEnv = process.env
-): DatabaseAdminConfig {
+export function getDatabaseAdminConfig(env: RuntimeEnv = process.env): DatabaseAdminConfig {
   return parseDatabaseAdminConfig(env);
 }
 ```
@@ -870,11 +836,11 @@ export type DatabasePool = Pool;
 
 export function createDatabasePool(
   connectionString: string,
-  overrides: Partial<PoolConfig> = {}
+  overrides: Partial<PoolConfig> = {},
 ): DatabasePool {
   return new Pool({
     connectionString,
-    ...overrides
+    ...overrides,
   });
 }
 
@@ -884,13 +850,13 @@ export function createDatabaseClient(pool: DatabasePool): VisionDatabase {
 
 export function createRuntimeDatabase(
   config: DatabaseRuntimeConfig,
-  overrides: Partial<PoolConfig> = {}
+  overrides: Partial<PoolConfig> = {},
 ) {
   const pool = createDatabasePool(config.databaseUrl, overrides);
 
   return {
     pool,
-    db: createDatabaseClient(pool)
+    db: createDatabaseClient(pool),
   } as const;
 }
 
@@ -913,7 +879,7 @@ type DatabaseHealthExecutor = {
 };
 
 export async function checkDatabaseHealth(
-  db: DatabaseHealthExecutor
+  db: DatabaseHealthExecutor,
 ): Promise<{ status: "ok"; ok: true }> {
   const result = await db.execute(sql`select 1 as ok`);
 
@@ -923,7 +889,7 @@ export async function checkDatabaseHealth(
 
   return {
     status: "ok",
-    ok: true
+    ok: true,
   };
 }
 ```
@@ -939,7 +905,7 @@ type TransactionCapable<TTx> = {
 
 export async function withDatabaseTransaction<TTx, TResult>(
   db: TransactionCapable<TTx>,
-  callback: (tx: TTx) => Promise<TResult>
+  callback: (tx: TTx) => Promise<TResult>,
 ): Promise<TResult> {
   return db.transaction(callback);
 }
@@ -955,12 +921,8 @@ import { pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
 export const appMetadata = pgTable("app_metadata", {
   key: varchar("key", { length: 128 }).primaryKey(),
   value: text("value").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow()
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 ```
 
@@ -981,13 +943,13 @@ export {
   createDatabasePool,
   createRuntimeDatabase,
   type DatabasePool,
-  type VisionDatabase
+  type VisionDatabase,
 } from "./client";
 export {
   getDatabaseAdminConfig,
   getDatabaseRuntimeConfig,
   type DatabaseAdminConfig,
-  type DatabaseRuntimeConfig
+  type DatabaseRuntimeConfig,
 } from "./config";
 export { checkDatabaseHealth } from "./health";
 export { appMetadata } from "./schema";
@@ -1020,6 +982,7 @@ Expected: commit succeeds.
 ## Task 4: Add Drizzle Tooling And Generate The Baseline Migration
 
 **Files:**
+
 - Modify: `package.json`
 - Create: `drizzle.config.ts`
 - Create: `db/migrations/0000_phase_3_baseline.sql`
@@ -1062,12 +1025,12 @@ export default defineConfig({
   schema: "./packages/db/src/schema/index.ts",
   out: "./db/migrations",
   dbCredentials: {
-    url: databaseUrl
+    url: databaseUrl,
   },
   migrations: {
     table: "__drizzle_migrations",
-    schema: "drizzle"
-  }
+    schema: "drizzle",
+  },
 });
 ```
 
@@ -1126,6 +1089,7 @@ Expected: commit succeeds.
 ## Task 5: Add Seed, Reset, And Documentation
 
 **Files:**
+
 - Create: `db/seeds/seed.ts`
 - Create: `db/scripts/reset.ts`
 - Create: `docs/architecture/database-foundation.md`
@@ -1143,7 +1107,7 @@ import {
   createDatabaseClient,
   createDatabasePool,
   getDatabaseRuntimeConfig,
-  withDatabaseTransaction
+  withDatabaseTransaction,
 } from "../../packages/db/src/index";
 
 const { databaseUrl } = getDatabaseRuntimeConfig(process.env);
@@ -1156,12 +1120,12 @@ try {
     await tx.insert(appMetadata).values([
       {
         key: "schema_baseline",
-        value: "phase_3"
+        value: "phase_3",
       },
       {
         key: "seed_version",
-        value: "2026-04-20-phase-3"
-      }
+        value: "2026-04-20-phase-3",
+      },
     ]);
   });
 
@@ -1193,14 +1157,14 @@ function getDatabaseName(databaseUrl: string): string {
 }
 
 function quoteIdentifier(identifier: string): string {
-  return `"${identifier.replace(/"/g, "\"\"")}"`;
+  return `"${identifier.replace(/"/g, '""')}"`;
 }
 
 function runPnpmCommand(args: string[]): void {
   const command = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
   execFileSync(command, args, {
-    stdio: "inherit"
+    stdio: "inherit",
   });
 }
 
@@ -1214,12 +1178,12 @@ const targetDatabaseName = getDatabaseName(config.databaseUrl);
 
 if (getDatabaseName(config.adminDatabaseUrl) === targetDatabaseName) {
   throw new Error(
-    "DATABASE_ADMIN_URL must point to a maintenance database, not the target application database"
+    "DATABASE_ADMIN_URL must point to a maintenance database, not the target application database",
   );
 }
 
 const adminClient = new Client({
-  connectionString: config.adminDatabaseUrl
+  connectionString: config.adminDatabaseUrl,
 });
 
 try {
@@ -1229,14 +1193,10 @@ try {
      from pg_stat_activity
      where datname = $1
        and pid <> pg_backend_pid()`,
-    [targetDatabaseName]
+    [targetDatabaseName],
   );
-  await adminClient.query(
-    `drop database if exists ${quoteIdentifier(targetDatabaseName)}`
-  );
-  await adminClient.query(
-    `create database ${quoteIdentifier(targetDatabaseName)}`
-  );
+  await adminClient.query(`drop database if exists ${quoteIdentifier(targetDatabaseName)}`);
+  await adminClient.query(`create database ${quoteIdentifier(targetDatabaseName)}`);
 } finally {
   await adminClient.end();
 }
@@ -1304,7 +1264,8 @@ Vision distinguishes between runtime database access and admin database access.
 
 ## Admin Access
 
-- `DATABASE_ADMIN_URL` is for migrations, reset tooling, and other admin-only operations.
+- `DATABASE_ADMIN_URL` is for admin tooling such as reset, create, and drop operations.
+- `DATABASE_ADMIN_TARGET_DB` identifies the application database that reset tooling will recreate.
 - In local development it may use the same PostgreSQL role as runtime for practicality.
 - In local and test environments it must target a maintenance database such as `postgres`, not the application database itself.
 
@@ -1345,6 +1306,7 @@ Expected: commit succeeds.
 ## Task 6: Update CI And Run Final Verification
 
 **Files:**
+
 - Modify: `.github/workflows/ci.yml`
 - Verify all Phase 3 files
 

@@ -1,18 +1,18 @@
 import { defineConfig } from "drizzle-kit";
 
-import { getDatabaseAdminConfig } from "./packages/db/src/config";
+import { getDatabaseRuntimeConfig } from "./packages/db/src/config";
 
-const { adminDatabaseUrl } = getDatabaseAdminConfig(process.env);
+const { databaseUrl } = getDatabaseRuntimeConfig(process.env);
 
 export default defineConfig({
   dialect: "postgresql",
   schema: "./packages/db/src/schema/index.ts",
   out: "./db/migrations",
   dbCredentials: {
-    url: adminDatabaseUrl
+    url: databaseUrl,
   },
   migrations: {
     table: "__drizzle_migrations",
-    schema: "drizzle"
-  }
+    schema: "drizzle",
+  },
 });
