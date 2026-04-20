@@ -20,6 +20,9 @@ importers:
       eslint:
         specifier: latest
         version: 10.2.1
+      pg:
+        specifier: ^8.20.0
+        version: 8.20.0
       prettier:
         specifier: latest
         version: 3.8.3

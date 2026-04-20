@@ -11,6 +11,28 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: vision_local
+          POSTGRES_USER: vision_local
+          POSTGRES_PASSWORD: vision_local_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vision_local -d vision_local"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: test
+      API_HOST: 127.0.0.1
+      API_PORT: 4000
+      DATABASE_URL: postgresql://vision_local:vision_local_password@127.0.0.1:5432/vision_local
+      DATABASE_ADMIN_URL: postgresql://vision_local:vision_local_password@127.0.0.1:5432/postgres
+      DATABASE_ADMIN_TARGET_DB: vision_local
+      NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:4000
 
     steps:
       - name: Checkout
@@ -26,6 +48,12 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Check migrations
+        run: pnpm db:check
+
+      - name: Reset database
+        run: pnpm db:reset
 
       - name: Typecheck
         run: pnpm typecheck

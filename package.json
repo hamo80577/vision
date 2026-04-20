@@ -22,6 +22,7 @@
     "@types/node": "latest",
     "drizzle-kit": "^0.31.10",
     "eslint": "latest",
+    "pg": "^8.20.0",
     "prettier": "latest",
     "tsup": "latest",
     "tsx": "latest",
