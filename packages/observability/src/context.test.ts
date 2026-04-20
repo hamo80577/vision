@@ -46,8 +46,8 @@ describe("context", () => {
     });
 
     const next = extendObservabilityContext(base, {
-      requestId: "bad id",
-      correlationId: "also bad",
+      requestId: "req-override",
+      correlationId: "corr-override",
       tenant: "tenant-b",
       environment: "prod"
     });

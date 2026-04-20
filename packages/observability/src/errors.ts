@@ -7,42 +7,51 @@ export interface ProblemDefinition {
   type: string;
 }
 
+export type ProblemErrorOptions = ProblemDefinition & {
+  detail?: string;
+  instance?: string;
+  traceId?: string;
+  issues?: ProblemDetails["issues"];
+};
+
+const PROBLEM_BASE_URL = "https://vision.local/problems";
+
 const PROBLEM_DEFINITIONS: Record<ProblemDefinition["status"], ProblemDefinition> = {
   401: {
     status: 401,
     code: "unauthenticated",
     title: "Unauthenticated",
-    type: "urn:vision:problem:unauthenticated"
+    type: `${PROBLEM_BASE_URL}/unauthenticated`
   },
   403: {
     status: 403,
     code: "forbidden",
     title: "Forbidden",
-    type: "urn:vision:problem:forbidden"
+    type: `${PROBLEM_BASE_URL}/forbidden`
   },
   404: {
     status: 404,
     code: "not_found",
     title: "Not Found",
-    type: "urn:vision:problem:not_found"
+    type: `${PROBLEM_BASE_URL}/not-found`
   },
   409: {
     status: 409,
     code: "conflict",
     title: "Conflict",
-    type: "urn:vision:problem:conflict"
+    type: `${PROBLEM_BASE_URL}/conflict`
   },
   422: {
     status: 422,
     code: "validation_error",
     title: "Validation Error",
-    type: "urn:vision:problem:validation_error"
+    type: `${PROBLEM_BASE_URL}/validation-error`
   },
   500: {
     status: 500,
     code: "internal_error",
-    title: "Internal Error",
-    type: "urn:vision:problem:internal_error"
+    title: "Internal Server Error",
+    type: `${PROBLEM_BASE_URL}/internal-error`
   }
 };
 
@@ -57,12 +66,31 @@ export function getProblemDefinitionForStatus(status: number): ProblemDefinition
 }
 
 export class ProblemError extends Error {
+  readonly type: string;
+  readonly title: string;
+  readonly status: number;
+  readonly code: ProblemCode;
+  readonly issues?: ProblemDetails["issues"];
   readonly problem: ProblemDetails;
 
-  constructor(problem: ProblemDetails) {
-    super(problem.detail ?? problem.title);
+  constructor(options: ProblemErrorOptions) {
+    super(options.detail ?? options.title);
     this.name = PROBLEM_ERROR_NAME;
-    this.problem = problem;
+    this.type = options.type;
+    this.title = options.title;
+    this.status = options.status;
+    this.code = options.code;
+    this.issues = options.issues;
+    this.problem = {
+      type: options.type,
+      title: options.title,
+      status: options.status,
+      code: options.code,
+      detail: options.detail,
+      instance: options.instance,
+      traceId: options.traceId,
+      issues: options.issues
+    };
   }
 }
 
@@ -75,8 +103,8 @@ export function serializeErrorForLog(error: unknown): Record<string, unknown> {
     return {
       name: error.name,
       message: error.message,
-      code: error.problem.code,
-      status: error.problem.status
+      code: error.code,
+      status: error.status
     };
   }
 

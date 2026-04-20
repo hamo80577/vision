@@ -25,6 +25,10 @@ export interface ProblemDetails {
   issues?: ProblemValidationIssue[];
 }
 
+export type ProblemDetailsInput = Omit<ProblemDetails, "instance"> & {
+  instance?: string;
+};
+
 export function sanitizeProblemInstance(value: string | undefined): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -51,7 +55,7 @@ export function sanitizeProblemInstance(value: string | undefined): string | und
   return pathOnly.startsWith("/") ? pathOnly : `/${pathOnly}`;
 }
 
-export function createProblemDetails(input: ProblemDetails): ProblemDetails {
+export function createProblemDetails(input: ProblemDetailsInput): ProblemDetails {
   const next: ProblemDetails = {
     type: input.type,
     title: input.title,

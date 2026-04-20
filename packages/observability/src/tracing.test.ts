@@ -10,7 +10,7 @@ describe("tracing", () => {
     expect(trace).toHaveProperty("name", "job.process");
     expect("traceId" in trace).toBe(true);
     expect(trace.traceId).toBeUndefined();
-    expect(() => trace.end()).not.toThrow();
-    expect(() => trace.recordError(new Error("boom"))).not.toThrow();
+    expect(() => trace.end({ result: "ok" })).not.toThrow();
+    expect(() => trace.error(new Error("boom"))).not.toThrow();
   });
 });

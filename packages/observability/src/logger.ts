@@ -3,7 +3,10 @@ import { serializeErrorForLog } from "./errors";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
-export type LogMeta = Record<string, unknown>;
+export type LogMetadata = Record<string, unknown>;
+export type LogSink = (line: string) => void;
+export type Clock = () => Date;
+export type LogMeta = LogMetadata;
 
 export interface LogEntry {
   timestamp: string;
@@ -12,14 +15,14 @@ export interface LogEntry {
   environment: string;
   message: string;
   context?: Partial<ObservabilityContext>;
-  meta?: LogMeta;
+  meta?: LogMetadata;
 }
 
 export interface VisionLogger {
-  debug(message: string, meta?: LogMeta): void;
-  info(message: string, meta?: LogMeta): void;
-  warn(message: string, meta?: LogMeta): void;
-  error(message: string, meta?: LogMeta): void;
+  debug(message: string, meta?: LogMetadata): void;
+  info(message: string, meta?: LogMetadata): void;
+  warn(message: string, meta?: LogMetadata): void;
+  error(message: string, meta?: LogMetadata): void;
   child(context: Partial<ObservabilityContext>): VisionLogger;
 }
 
@@ -28,8 +31,10 @@ export interface CreateLoggerOptions {
   environment: string;
   level?: LogLevel;
   context?: Partial<ObservabilityContext>;
-  now?: () => Date;
-  write?: (line: string) => void;
+  sink?: LogSink;
+  clock?: Clock;
+  now?: Clock;
+  write?: LogSink;
 }
 
 const LOG_LEVEL_WEIGHT: Record<LogLevel, number> = {
@@ -57,12 +62,12 @@ function hasKeys(record: Record<string, unknown> | undefined): boolean {
   return record !== undefined && Object.keys(record).length > 0;
 }
 
-function normalizeMeta(meta: LogMeta | undefined): LogMeta | undefined {
+function normalizeMeta(meta: LogMetadata | undefined): LogMetadata | undefined {
   if (meta === undefined) {
     return undefined;
   }
 
-  const normalized: LogMeta = {};
+  const normalized: LogMetadata = {};
 
   for (const [key, value] of Object.entries(meta)) {
     if (value instanceof Error) {
@@ -78,22 +83,22 @@ function normalizeMeta(meta: LogMeta | undefined): LogMeta | undefined {
 
 export function createLogger(options: CreateLoggerOptions): VisionLogger {
   const threshold = options.level ?? "info";
-  const write = options.write ?? ((line: string) => console.log(line));
-  const now = options.now ?? (() => new Date());
+  const sink = options.sink ?? options.write ?? ((line: string) => console.log(line));
+  const clock = options.clock ?? options.now ?? (() => new Date());
   const baseContext = options.context;
 
   const writeEntry = (
     level: LogLevel,
     message: string,
     context: Partial<ObservabilityContext> | undefined,
-    meta: LogMeta | undefined
+    meta: LogMetadata | undefined
   ) => {
     if (LOG_LEVEL_WEIGHT[level] < LOG_LEVEL_WEIGHT[threshold]) {
       return;
     }
 
     const entry: LogEntry = {
-      timestamp: now().toISOString(),
+      timestamp: clock().toISOString(),
       level,
       service: options.service,
       environment: options.environment,
@@ -110,7 +115,7 @@ export function createLogger(options: CreateLoggerOptions): VisionLogger {
       entry.meta = normalizedMeta;
     }
 
-    write(JSON.stringify(entry));
+    sink(JSON.stringify(entry));
   };
 
   const createScopedLogger = (

@@ -11,8 +11,10 @@ export interface ObservabilityContext {
   environment?: string;
 }
 
+export type ObservabilityContextInput = Partial<ObservabilityContext>;
+
 export function createObservabilityContext(
-  incoming: Partial<ObservabilityContext> = {}
+  incoming: ObservabilityContextInput = {}
 ): ObservabilityContext {
   const requestId = sanitizeObservabilityId(incoming.requestId) ?? createObservabilityId();
   const correlationId = sanitizeObservabilityId(incoming.correlationId) ?? requestId;
@@ -31,18 +33,12 @@ export function createObservabilityContext(
 
 export function extendObservabilityContext(
   base: ObservabilityContext,
-  overrides: Partial<ObservabilityContext> = {}
+  overrides: ObservabilityContextInput = {}
 ): ObservabilityContext {
-  const requestId = sanitizeObservabilityId(overrides.requestId) ?? base.requestId;
-  const correlationId =
-    sanitizeObservabilityId(overrides.correlationId) ?? base.correlationId;
-  const traceId =
-    sanitizeObservabilityId(overrides.traceId) ?? base.traceId;
-
   return {
-    requestId,
-    correlationId,
-    traceId,
+    requestId: base.requestId,
+    correlationId: base.correlationId,
+    traceId: sanitizeObservabilityId(overrides.traceId) ?? base.traceId,
     subject: overrides.subject ?? base.subject,
     tenant: overrides.tenant ?? base.tenant,
     branch: overrides.branch ?? base.branch,

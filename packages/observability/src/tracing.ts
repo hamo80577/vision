@@ -3,8 +3,8 @@ import { sanitizeObservabilityId } from "./ids";
 export interface ActiveTrace {
   name: string;
   traceId?: string;
-  end(): void;
-  recordError(error: unknown): void;
+  end(meta?: Record<string, unknown>): void;
+  error(error: unknown): void;
 }
 
 export interface ObservabilityTracer {
@@ -22,10 +22,10 @@ export function createNoopTracer(): ObservabilityTracer {
       return {
         name,
         traceId: sanitizeObservabilityId(options?.traceId),
-        end() {
+        end(_meta?: Record<string, unknown>) {
           return undefined;
         },
-        recordError(_error: unknown) {
+        error(_error: unknown) {
           return undefined;
         }
       };

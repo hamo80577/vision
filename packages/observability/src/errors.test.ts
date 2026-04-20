@@ -12,7 +12,7 @@ describe("errors", () => {
       status: 404,
       code: "not_found",
       title: "Not Found",
-      type: "urn:vision:problem:not_found"
+      type: "https://vision.local/problems/not-found"
     });
   });
 
@@ -21,14 +21,14 @@ describe("errors", () => {
       status: 409,
       code: "conflict",
       title: "Conflict",
-      type: "urn:vision:problem:conflict",
+      type: "https://vision.local/problems/conflict",
       detail: "Version mismatch"
     });
 
     expect(error).toBeInstanceOf(Error);
     expect(isProblemError(error)).toBe(true);
     expect(isProblemError(new Error("plain"))).toBe(false);
-    expect(error.problem.status).toBe(409);
-    expect(error.problem.code).toBe("conflict");
+    expect(error.status).toBe(409);
+    expect(error.code).toBe("conflict");
   });
 });
