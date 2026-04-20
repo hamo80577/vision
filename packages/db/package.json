@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@vision/config": "workspace:*",
-    "drizzle-orm": "latest",
-    "pg": "latest"
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.20.0"
   }
 }
