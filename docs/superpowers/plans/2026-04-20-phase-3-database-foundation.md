@@ -561,7 +561,7 @@ corepack pnpm install
 Generate a named migration after changing schema files:
 
 ```powershell
-corepack pnpm db:generate -- --name=your_change_name
+corepack pnpm db:generate --name=your_change_name
 ```
 
 Apply migrations:
@@ -1039,7 +1039,7 @@ export default defineConfig({
 Run:
 
 ```powershell
-corepack pnpm db:generate -- --name=phase_3_baseline
+corepack pnpm db:generate --name=phase_3_baseline
 ```
 
 Expected: Drizzle generates these files:
@@ -1223,7 +1223,7 @@ Vision Phase 3 establishes the database foundation before product-domain schema 
 ## Workflow
 
 1. Update schema files in `packages/db/src/schema`.
-2. Generate a named migration with `pnpm db:generate -- --name=change_name`.
+2. Generate a named migration with `pnpm db:generate --name=change_name`.
 3. Review the generated SQL.
 4. Apply migrations with `pnpm db:migrate`.
 5. Seed infrastructure-only rows with `pnpm db:seed`.
