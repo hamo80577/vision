@@ -177,6 +177,39 @@ describe("@vision/config", () => {
     });
   });
 
+  it.each(["debug", "warn"] as const)(
+    "accepts %s as an explicit worker log level",
+    (logLevel) => {
+      expect(
+        parseWorkerConfig({
+          APP_ENV: "test",
+          DATABASE_URL:
+            "postgresql://vision_test:test_password@localhost:5432/vision_test",
+          LOG_LEVEL: logLevel
+        })
+      ).toEqual({
+        appEnv: "test",
+        databaseUrl:
+          "postgresql://vision_test:test_password@localhost:5432/vision_test",
+        logLevel
+      });
+    }
+  );
+
+  it.each(["verbose", "trace"] as const)(
+    "rejects %s as a worker log level",
+    (logLevel) => {
+      expect(() =>
+        parseWorkerConfig({
+          APP_ENV: "test",
+          DATABASE_URL:
+            "postgresql://vision_test:test_password@localhost:5432/vision_test",
+          LOG_LEVEL: logLevel
+        })
+      ).toThrow(ConfigError);
+    }
+  );
+
   it("parses frontend config from public variables only", () => {
     const config = parseWebConfig({
       ...validFrontendEnv,
