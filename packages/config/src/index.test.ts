@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   ConfigError,
   parseApiConfig,
+  parseDatabaseAdminConfig,
+  parseDatabaseRuntimeConfig,
   parseErpConfig,
   parsePlatformConfig,
   parseWebConfig,
@@ -11,6 +13,8 @@ import {
 
 const localDatabaseUrl =
   "postgresql://vision_local:vision_local_password@localhost:5432/vision_local";
+const localAdminDatabaseUrl =
+  "postgresql://vision_local:vision_local_password@localhost:5432/postgres";
 
 const validApiEnv = {
   APP_ENV: "local",
@@ -76,6 +80,53 @@ describe("@vision/config", () => {
         APP_ENV: "staging",
         DATABASE_URL:
           "postgresql://vision_local:staging_password@db.internal:5432/vision"
+      })
+    ).toThrow(ConfigError);
+  });
+
+  it("parses database runtime config", () => {
+    expect(
+      parseDatabaseRuntimeConfig({
+        APP_ENV: "test",
+        DATABASE_URL:
+          "postgresql://vision_test:test_password@localhost:5432/vision_test"
+      })
+    ).toEqual({
+      appEnv: "test",
+      databaseUrl:
+        "postgresql://vision_test:test_password@localhost:5432/vision_test"
+    });
+  });
+
+  it("parses database admin config", () => {
+    expect(
+      parseDatabaseAdminConfig({
+        APP_ENV: "local",
+        DATABASE_URL: localDatabaseUrl,
+        DATABASE_ADMIN_URL: localAdminDatabaseUrl
+      })
+    ).toEqual({
+      appEnv: "local",
+      databaseUrl: localDatabaseUrl,
+      adminDatabaseUrl: localAdminDatabaseUrl
+    });
+  });
+
+  it("fails when DATABASE_ADMIN_URL is missing", () => {
+    expect(() =>
+      parseDatabaseAdminConfig({
+        APP_ENV: "local",
+        DATABASE_URL: localDatabaseUrl
+      })
+    ).toThrow(ConfigError);
+  });
+
+  it("fails when DATABASE_ADMIN_URL targets the same local database", () => {
+    expect(() =>
+      parseDatabaseAdminConfig({
+        APP_ENV: "local",
+        DATABASE_URL: localDatabaseUrl,
+        DATABASE_ADMIN_URL: localDatabaseUrl
       })
     ).toThrow(ConfigError);
   });

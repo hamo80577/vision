@@ -38,13 +38,19 @@ Stop the local database:
 docker compose down
 ```
 
-The local database URL is:
+The local runtime database URL is:
 
 ```text
 postgresql://vision_local:vision_local_password@localhost:5432/vision_local
 ```
 
-This URL is a local-only default. It must not be used for staging or production.
+The local admin database URL is:
+
+```text
+postgresql://vision_local:vision_local_password@localhost:5432/postgres
+```
+
+These URLs are local-only defaults. They must not be used for staging or production.
 
 ## Install
 
@@ -52,6 +58,32 @@ Install dependencies:
 
 ```powershell
 corepack pnpm install
+```
+
+## Database Workflow
+
+Generate a named migration after changing schema files:
+
+```powershell
+corepack pnpm db:generate -- --name=your_change_name
+```
+
+Apply migrations:
+
+```powershell
+corepack pnpm db:migrate
+```
+
+Seed the local database:
+
+```powershell
+corepack pnpm db:seed
+```
+
+Reset the local database and replay migrations and seeds:
+
+```powershell
+corepack pnpm db:reset
 ```
 
 ## Verification

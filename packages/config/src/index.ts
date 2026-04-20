@@ -2,6 +2,8 @@ import { z } from "zod";
 
 const localDatabaseUrl =
   "postgresql://vision_local:vision_local_password@localhost:5432/vision_local";
+const localDatabaseAdminUrl =
+  "postgresql://vision_local:vision_local_password@localhost:5432/postgres";
 const localDatabaseUser = "vision_local";
 const localDatabasePassword = "vision_local_password";
 
@@ -14,6 +16,15 @@ const appEnvironmentSchema = z.enum([
 
 const portSchema = z.coerce.number().int().min(1).max(65535);
 const urlSchema = z.string().url();
+
+const databaseRuntimeEnvSchema = z.object({
+  APP_ENV: appEnvironmentSchema,
+  DATABASE_URL: urlSchema
+});
+
+const databaseAdminEnvSchema = databaseRuntimeEnvSchema.extend({
+  DATABASE_ADMIN_URL: urlSchema
+});
 
 const apiEnvSchema = z.object({
   APP_ENV: appEnvironmentSchema,
@@ -46,6 +57,15 @@ export type ApiConfig = {
 export type WorkerConfig = {
   appEnv: AppEnvironment;
   databaseUrl: string;
+};
+
+export type DatabaseRuntimeConfig = {
+  appEnv: AppEnvironment;
+  databaseUrl: string;
+};
+
+export type DatabaseAdminConfig = DatabaseRuntimeConfig & {
+  adminDatabaseUrl: string;
 };
 
 export type FrontendConfig = {
@@ -85,6 +105,17 @@ function parseEnv<T>(schema: z.ZodType<T>, env: RuntimeEnv): T {
   return result.data;
 }
 
+function getDatabaseName(databaseUrl: string): string {
+  const parsedUrl = new URL(databaseUrl);
+  const databaseName = parsedUrl.pathname.replace(/^\//, "");
+
+  if (!databaseName) {
+    throw new ConfigError(["database URL must include a database name"]);
+  }
+
+  return databaseName;
+}
+
 function assertSafeDatabaseUrl(
   appEnv: AppEnvironment,
   databaseUrl: string
@@ -96,9 +127,10 @@ function assertSafeDatabaseUrl(
   const parsedUrl = new URL(databaseUrl);
   const username = decodeURIComponent(parsedUrl.username);
   const password = decodeURIComponent(parsedUrl.password);
-  const databaseName = parsedUrl.pathname.replace(/^\//, "");
+  const databaseName = getDatabaseName(databaseUrl);
   const usesLocalDefaults =
     databaseUrl === localDatabaseUrl ||
+    databaseUrl === localDatabaseAdminUrl ||
     username === localDatabaseUser ||
     password === localDatabasePassword ||
     (parsedUrl.hostname === "localhost" && databaseName === "vision_local");
@@ -108,6 +140,55 @@ function assertSafeDatabaseUrl(
       `${appEnv} DATABASE_URL must not use local database defaults`
     ]);
   }
+}
+
+function assertValidAdminDatabaseUrl(
+  appEnv: AppEnvironment,
+  databaseUrl: string,
+  adminDatabaseUrl: string
+): void {
+  assertSafeDatabaseUrl(appEnv, adminDatabaseUrl);
+
+  if (
+    (appEnv === "local" || appEnv === "test") &&
+    getDatabaseName(databaseUrl) === getDatabaseName(adminDatabaseUrl)
+  ) {
+    throw new ConfigError([
+      `${appEnv} DATABASE_ADMIN_URL must point to a maintenance database`
+    ]);
+  }
+}
+
+export function parseDatabaseRuntimeConfig(
+  env: RuntimeEnv
+): DatabaseRuntimeConfig {
+  const parsed = parseEnv(databaseRuntimeEnvSchema, env);
+
+  assertSafeDatabaseUrl(parsed.APP_ENV, parsed.DATABASE_URL);
+
+  return {
+    appEnv: parsed.APP_ENV,
+    databaseUrl: parsed.DATABASE_URL
+  };
+}
+
+export function parseDatabaseAdminConfig(
+  env: RuntimeEnv
+): DatabaseAdminConfig {
+  const parsed = parseEnv(databaseAdminEnvSchema, env);
+
+  assertSafeDatabaseUrl(parsed.APP_ENV, parsed.DATABASE_URL);
+  assertValidAdminDatabaseUrl(
+    parsed.APP_ENV,
+    parsed.DATABASE_URL,
+    parsed.DATABASE_ADMIN_URL
+  );
+
+  return {
+    appEnv: parsed.APP_ENV,
+    databaseUrl: parsed.DATABASE_URL,
+    adminDatabaseUrl: parsed.DATABASE_ADMIN_URL
+  };
 }
 
 export function parseApiConfig(env: RuntimeEnv): ApiConfig {
