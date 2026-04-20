@@ -317,6 +317,82 @@ describe("buildApi", () => {
     await api.close();
   });
 
+  it("keeps protected request headers final even when a nested plugin onSend uses raw appendHeader", async () => {
+    const api = buildApi({
+      runtime
+    });
+
+    await api.register(async (plugin) => {
+      plugin.addHook("onSend", async (_request, reply, payload) => {
+        reply.raw.appendHeader("x-request-id", "bad append override");
+        reply.raw.appendHeader("x-correlation-id", "bad append override");
+
+        return payload;
+      });
+
+      plugin.get("/plugin-append-headers", async () => ({
+        ok: true
+      }));
+    });
+
+    const response = await api.inject({
+      method: "GET",
+      url: "/plugin-append-headers",
+      headers: {
+        "x-request-id": "bad id",
+        "x-correlation-id": "corr-123"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["x-request-id"]).toEqual(expect.any(String));
+    expect(response.headers["x-request-id"]).not.toContain("bad append override");
+    expect(response.headers["x-request-id"]).not.toBe("bad id");
+    expect(response.headers["x-correlation-id"]).toBe("corr-123");
+
+    await api.close();
+  });
+
+  it("keeps protected request headers final even when a nested plugin onSend uses raw setHeaders", async () => {
+    const api = buildApi({
+      runtime
+    });
+
+    await api.register(async (plugin) => {
+      plugin.addHook("onSend", async (_request, reply, payload) => {
+        reply.raw.setHeaders(
+          new Map<string, string>([
+            ["x-request-id", "bad setheaders override"],
+            ["x-correlation-id", "bad setheaders override"]
+          ])
+        );
+
+        return payload;
+      });
+
+      plugin.get("/plugin-setheaders", async () => ({
+        ok: true
+      }));
+    });
+
+    const response = await api.inject({
+      method: "GET",
+      url: "/plugin-setheaders",
+      headers: {
+        "x-request-id": "bad id",
+        "x-correlation-id": "corr-123"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["x-request-id"]).toEqual(expect.any(String));
+    expect(response.headers["x-request-id"]).not.toContain("bad setheaders override");
+    expect(response.headers["x-request-id"]).not.toBe("bad id");
+    expect(response.headers["x-correlation-id"]).toBe("corr-123");
+
+    await api.close();
+  });
+
   it("collapses unexpected errors to a safe 500 payload with no secret leak", async () => {
     const api = buildApi({
       runtime

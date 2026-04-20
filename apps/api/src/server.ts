@@ -113,6 +113,25 @@ function applyProtectedHeadersToWriteHeadArgument(
   return headers;
 }
 
+function applyProtectedHeadersToIterable(
+  headers: Headers | Map<string, number | string | readonly string[]>,
+  context: ProtectedContext
+): Headers | Map<string, number | string | readonly string[]> {
+  if (headers instanceof Headers) {
+    const nextHeaders = new Headers(headers);
+    nextHeaders.set(REQUEST_ID_HEADER, context.requestId);
+    nextHeaders.set(CORRELATION_ID_HEADER, context.correlationId);
+
+    return nextHeaders;
+  }
+
+  const nextHeaders = new Map(headers);
+  nextHeaders.set(REQUEST_ID_HEADER, context.requestId);
+  nextHeaders.set(CORRELATION_ID_HEADER, context.correlationId);
+
+  return nextHeaders;
+}
+
 function applyResponseContextHeaders(
   reply: FastifyReply,
   context: ProtectedContext
@@ -133,6 +152,8 @@ function protectResponseContextHeaders(
   const originalSetHeader = reply.raw.setHeader.bind(reply.raw);
   const originalRawRemoveHeader = reply.raw.removeHeader.bind(reply.raw);
   const originalWriteHead = reply.raw.writeHead.bind(reply.raw);
+  const originalAppendHeader = reply.raw.appendHeader?.bind(reply.raw);
+  const originalSetHeaders = reply.raw.setHeaders?.bind(reply.raw);
 
   reply.header = ((name: string, value: unknown) => {
     return originalHeader(name, getProtectedHeaderValue(name, context) ?? value);
@@ -167,6 +188,25 @@ function protectResponseContextHeaders(
   reply.raw.setHeader = ((name: string, value: number | string | readonly string[]) => {
     return originalSetHeader(name, getProtectedHeaderValue(name, context) ?? value);
   }) as typeof reply.raw.setHeader;
+
+  if (originalAppendHeader) {
+    reply.raw.appendHeader = ((name: string, value: string | readonly string[]) => {
+      const protectedValue = getProtectedHeaderValue(name, context);
+
+      if (protectedValue !== undefined) {
+        originalSetHeader(name, protectedValue);
+        return reply.raw;
+      }
+
+      return originalAppendHeader(name, value);
+    }) as typeof reply.raw.appendHeader;
+  }
+
+  if (originalSetHeaders) {
+    reply.raw.setHeaders = ((headers: Headers | Map<string, number | string | readonly string[]>) => {
+      return originalSetHeaders(applyProtectedHeadersToIterable(headers, context));
+    }) as typeof reply.raw.setHeaders;
+  }
 
   reply.raw.removeHeader = ((name: string) => {
     const protectedValue = getProtectedHeaderValue(name, context);
