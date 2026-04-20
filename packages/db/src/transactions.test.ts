@@ -1,12 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { withDatabaseTransaction } from "./transactions";
 
 describe("withDatabaseTransaction", () => {
   it("delegates to the database transaction API", async () => {
-    const transaction = vi.fn(async (callback: (tx: string) => Promise<string>) =>
-      callback("tx-marker")
-    );
+    let calls = 0;
+    const transaction = async <TResult>(
+      callback: (tx: string) => Promise<TResult>
+    ): Promise<TResult> => {
+      calls += 1;
+      return callback("tx-marker");
+    };
 
     await expect(
       withDatabaseTransaction(
@@ -17,6 +21,6 @@ describe("withDatabaseTransaction", () => {
       )
     ).resolves.toBe("tx-marker:complete");
 
-    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(calls).toBe(1);
   });
 });
