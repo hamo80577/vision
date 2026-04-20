@@ -34,9 +34,40 @@ describe("@vision/config", () => {
       appEnv: "local",
       host: "127.0.0.1",
       port: 4000,
-      databaseUrl: localDatabaseUrl
+      databaseUrl: localDatabaseUrl,
+      logLevel: "info"
     });
   });
+
+  it.each(["debug", "warn"] as const)(
+    "accepts %s as an explicit API log level",
+    (logLevel) => {
+      expect(
+        parseApiConfig({
+          ...validApiEnv,
+          LOG_LEVEL: logLevel
+        })
+      ).toEqual({
+        appEnv: "local",
+        host: "127.0.0.1",
+        port: 4000,
+        databaseUrl: localDatabaseUrl,
+        logLevel
+      });
+    }
+  );
+
+  it.each(["verbose", "trace"] as const)(
+    "rejects %s as an API log level",
+    (logLevel) => {
+      expect(() =>
+        parseApiConfig({
+          ...validApiEnv,
+          LOG_LEVEL: logLevel
+        })
+      ).toThrow(ConfigError);
+    }
+  );
 
   it("fails when DATABASE_URL is missing for API config", () => {
     const { DATABASE_URL: _databaseUrl, ...missingDatabaseUrlEnv } =
@@ -141,7 +172,8 @@ describe("@vision/config", () => {
     ).toEqual({
       appEnv: "test",
       databaseUrl:
-        "postgresql://vision_test:test_password@localhost:5432/vision_test"
+        "postgresql://vision_test:test_password@localhost:5432/vision_test",
+      logLevel: "info"
     });
   });
 
