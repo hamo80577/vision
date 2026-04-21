@@ -11,6 +11,8 @@ describe("buildApi", () => {
     port: 4000,
     databaseUrl:
       "postgresql://vision_local:vision_local_password@localhost:5432/vision_local",
+    mfaEncryptionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+    mfaEncryptionKeyVersion: "v1",
     logLevel: "debug",
     serviceName: "vision-api"
   } as const;

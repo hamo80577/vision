@@ -102,6 +102,11 @@ describe("createAuthnService", () => {
         loginIdentifier,
         password: "S3cure-password!",
       });
+
+      if (login.kind !== "session") {
+        throw new Error("Expected customer login to create a session result.");
+      }
+
       createdSessionIds.push(login.session.sessionId);
 
       expect(login.subject).toMatchObject({

@@ -129,6 +129,8 @@ export function serializeErrorForLog(error: unknown): Record<string, unknown> {
       code?: unknown;
       status?: unknown;
       statusCode?: unknown;
+      requiredAssurance?: unknown;
+      denialReason?: unknown;
     };
 
     const serialized: Record<string, unknown> = {
