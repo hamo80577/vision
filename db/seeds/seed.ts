@@ -17,11 +17,11 @@ try {
     await tx.insert(appMetadata).values([
       {
         key: "schema_baseline",
-        value: "phase_3",
+        value: "phase_5",
       },
       {
         key: "seed_version",
-        value: "2026-04-20-phase-3",
+        value: "2026-04-21-phase-5",
       },
     ]);
   });
