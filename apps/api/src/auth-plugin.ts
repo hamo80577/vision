@@ -1,15 +1,17 @@
 import fastifyCookie from "@fastify/cookie";
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
 
 import {
   AuthnError,
+  type AuthResolution,
   createAuthnService,
   isAuthnError,
   type AuthnService
 } from "@vision/authn";
 import { closeDatabasePool, createRuntimeDatabase } from "@vision/db";
 import { ProblemError } from "@vision/observability";
+import type { ActiveTenantAccessSnapshot } from "@vision/tenancy";
 
 import {
   createUnauthenticatedProblem,
@@ -21,11 +23,23 @@ import {
   readAuthCookie,
   setAuthCookie
 } from "./auth-cookie";
+import { createAuthorizationGuard } from "./authz-guard";
 import type { ApiRuntimeConfig } from "./runtime";
+import { createTenancyGuard } from "./tenancy-guard";
+import { requireTenancyContext } from "./tenancy-request";
+
+export type ResolveInternalTenancyAccess = (
+  request: FastifyRequest,
+  auth: AuthResolution
+) =>
+  | ActiveTenantAccessSnapshot
+  | Promise<ActiveTenantAccessSnapshot | null>
+  | null;
 
 type AuthPluginOptions = {
   runtime: ApiRuntimeConfig;
   authService?: AuthnService;
+  resolveInternalTenancyAccess?: ResolveInternalTenancyAccess;
 };
 
 function insufficientAssurance(error: AuthnError): ProblemError {
@@ -50,7 +64,8 @@ function mapAuthnError(error: AuthnError): never {
     error.code === "expired_assurance_challenge" ||
     error.code === "consumed_assurance_challenge" ||
     error.code === "invalid_totp_code" ||
-    error.code === "invalid_backup_code"
+    error.code === "invalid_backup_code" ||
+    error.code === "invalid_session_context"
   ) {
     throw new ProblemError({
       type: "https://vision.local/problems/validation-error",
@@ -344,6 +359,112 @@ const authPluginImpl: FastifyPluginAsync<AuthPluginOptions> = async (
       throw error;
     }
   });
+
+  api.post(
+    "/auth/internal/context/branch/switch",
+    {
+      schema: {
+        body: {
+          type: "object",
+          required: ["branchId"],
+          additionalProperties: false,
+          properties: {
+            branchId: { type: "string", minLength: 1 }
+          }
+        }
+      },
+      preHandler: [
+        createTenancyGuard({
+          getRouteIntent: (request) => ({
+            surface: "erp",
+            requestedScope: "branch_switch",
+            branchIntent: {
+              source: "payload",
+              rawValue: (request.body as { branchId: string }).branchId
+            }
+          }),
+          getAccessSnapshot: async (request, auth) => {
+            if (!options.resolveInternalTenancyAccess) {
+              throw new ProblemError({
+                type: "https://vision.local/problems/internal-error",
+                title: "Internal Server Error",
+                status: 500,
+                code: "internal_error",
+                detail: "An unexpected error occurred."
+              });
+            }
+
+            return options.resolveInternalTenancyAccess(request, auth);
+          }
+        }),
+        createAuthorizationGuard({
+          resource: { family: "branch_operations" },
+          action: "switch_context",
+          getActorClaims: (request, auth) => {
+            const tenancy = requireTenancyContext(request);
+
+            return {
+              actorType: "internal",
+              subjectId: auth.subject.id,
+              currentAssurance: auth.session.assuranceLevel,
+              tenantRole: tenancy.access.tenantRole,
+              assignedBranchIds: tenancy.access.allowedBranchIds
+            };
+          },
+          getContextFacts: () => ({})
+        })
+      ]
+    },
+    async (request) => {
+      const auth = requireAuthenticatedRequest(request);
+      const token = readAuthCookie(request);
+
+      if (!token) {
+        throw createUnauthenticatedProblem("Authentication required.");
+      }
+
+      const tenancy = requireTenancyContext(request);
+      const targetBranchId = tenancy.targetBranchId;
+
+      if (!targetBranchId) {
+        throw new ProblemError({
+          type: "https://vision.local/problems/internal-error",
+          title: "Internal Server Error",
+          status: 500,
+          code: "internal_error",
+          detail: "An unexpected error occurred."
+        });
+      }
+
+      try {
+        const persisted = tenancy.activeBranchId !== targetBranchId;
+        const resolution = persisted
+          ? await authService.switchActiveBranchContext({
+              token,
+              activeTenantId: tenancy.activeTenantId,
+              nextBranchId: targetBranchId
+            })
+          : auth;
+
+        return {
+          subject: resolution.subject,
+          session: resolution.session,
+          branchSwitch: {
+            requested: tenancy.branchSwitch.requested,
+            persisted,
+            previousBranchId: tenancy.branchSwitch.previousBranchId,
+            nextBranchId: tenancy.branchSwitch.nextBranchId
+          }
+        };
+      } catch (error) {
+        if (isAuthnError(error)) {
+          mapAuthnError(error);
+        }
+
+        throw error;
+      }
+    }
+  );
 
   api.get("/auth/session", async (request, reply) => {
     try {

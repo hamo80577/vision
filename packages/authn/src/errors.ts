@@ -3,6 +3,7 @@ import type { AssuranceDenialReason, AuthAssuranceLevel } from "./assurance";
 export type AuthnErrorCode =
   | "invalid_credentials"
   | "invalid_session_token"
+  | "invalid_session_context"
   | "missing_session"
   | "expired_session"
   | "revoked_session"
@@ -22,6 +23,7 @@ export type AuthnErrorContext = {
 const AUTHN_ERROR_MESSAGES: Record<AuthnErrorCode, string> = {
   invalid_credentials: "Invalid login credentials.",
   invalid_session_token: "Invalid session token.",
+  invalid_session_context: "Invalid session context.",
   missing_session: "Authentication required.",
   expired_session: "Session has expired.",
   revoked_session: "Session has been revoked.",

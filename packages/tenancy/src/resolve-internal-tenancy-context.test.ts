@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   resolveInternalTenancyContext,
   toDatabaseAccessContext,
-  type TenancyErrorCode,
 } from "./index";
 
 const baseSession = {
@@ -20,7 +19,7 @@ const baseAccess = {
   allowedBranchIds: ["branch_1", "branch_2"],
 };
 
-function expectTenancyError(callback: () => unknown, code: TenancyErrorCode) {
+function expectTenancyError(callback: () => unknown, code: string) {
   try {
     callback();
   } catch (error) {
@@ -32,6 +31,21 @@ function expectTenancyError(callback: () => unknown, code: TenancyErrorCode) {
 }
 
 describe("resolveInternalTenancyContext", () => {
+  it("rejects global scope requests from internal tenancy resolution", () => {
+    expectTenancyError(
+      () =>
+        resolveInternalTenancyContext({
+          routeIntent: {
+            surface: "erp",
+            requestedScope: "global",
+          },
+          session: baseSession,
+          access: baseAccess,
+        }),
+      "unsupported_tenancy_scope",
+    );
+  });
+
   it("rejects platform tenant execution by default", () => {
     expectTenancyError(
       () =>

@@ -830,21 +830,31 @@ export function createAuthnService(
       nextBranchId: string;
     }) {
       const resolution = await this.resolveSession({ token: input.token });
+      const activeTenantId = input.activeTenantId.trim();
+      const nextBranchId = input.nextBranchId.trim();
+
+      if (!activeTenantId || !nextBranchId) {
+        throw new AuthnError("invalid_session_context");
+      }
 
       if (resolution.subject.subjectType !== "internal") {
         throw new AuthnError("invalid_session_token");
       }
 
-      if (resolution.session.activeTenantId !== input.activeTenantId) {
+      if (resolution.session.activeTenantId !== activeTenantId) {
         throw new AuthnError("invalid_session_token");
       }
 
       const previousBranchId = resolution.session.activeBranchId;
 
+      if (previousBranchId === nextBranchId) {
+        return loadResolution(resolution.session.sessionId);
+      }
+
       await db
         .update(authSessions)
         .set({
-          activeBranchId: input.nextBranchId,
+          activeBranchId: nextBranchId,
           updatedAt: now(),
         })
         .where(eq(authSessions.id, resolution.session.sessionId));
@@ -855,9 +865,9 @@ export function createAuthnService(
         subjectId: resolution.subject.id,
         sessionId: resolution.session.sessionId,
         detail: JSON.stringify({
-          tenantId: input.activeTenantId,
+          tenantId: activeTenantId,
           previousBranchId,
-          nextBranchId: input.nextBranchId,
+          nextBranchId,
         }),
       });
 

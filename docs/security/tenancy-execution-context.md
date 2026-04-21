@@ -49,6 +49,7 @@ Phase 8 resolved ERP context must satisfy all of the following:
 
 - tenant scope requires `activeTenantId` and `targetTenantId`
 - branch scope requires a valid tenant context plus a valid branch context
+- global scope must stay outside internal tenancy resolution
 - `targetTenantId` must equal `activeTenantId`
 - `targetBranchId` may differ from `activeBranchId` only during the dedicated branch-switch flow before persistence
 - platform tenant, branch, and branch-switch execution deny by default
@@ -59,6 +60,7 @@ Branch switching is a controlled session-context mutation.
 
 - allowed actors: authenticated internal ERP users with an active tenant context
 - validation: target branch must be explicit, must belong to the active tenant-scoped access snapshot, and must be authorized before persistence
+- flow: dedicated route intent -> tenancy validation -> `switch_context` authz -> session persistence -> audit
 - persistence point: session update happens in `packages/authn` only after tenancy validation and authz succeed
 - audit requirement: successful switches write a durable `branch_context_switched` event
 - failure behavior: fail closed, no partial session mutation

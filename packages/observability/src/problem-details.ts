@@ -14,6 +14,7 @@ export type ProblemCode =
   | "self_access_only"
   | "explicit_deny"
   | "unsupported_execution_surface"
+  | "unsupported_tenancy_scope"
   | "platform_tenant_execution_disabled"
   | "missing_active_tenant_context"
   | "missing_active_branch_context"

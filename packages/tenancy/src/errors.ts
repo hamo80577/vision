@@ -5,6 +5,8 @@ const TENANCY_ERROR_NAME = "TenancyError";
 const TENANCY_ERROR_MESSAGES: Record<TenancyErrorCode, string> = {
   unsupported_execution_surface:
     "This execution surface is not supported by the internal tenancy resolver.",
+  unsupported_tenancy_scope:
+    "This tenancy scope is not supported by the internal tenancy resolver.",
   platform_tenant_execution_disabled:
     "Platform tenant and branch execution is disabled in Phase 8.",
   missing_active_tenant_context: "Active tenant context is required.",

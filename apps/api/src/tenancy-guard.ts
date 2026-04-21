@@ -15,7 +15,7 @@ export type TenancyGuardOptions = {
   getAccessSnapshot: (
     request: FastifyRequest,
     auth: AuthResolution,
-  ) => ActiveTenantAccessSnapshot | null;
+  ) => ActiveTenantAccessSnapshot | Promise<ActiveTenantAccessSnapshot | null> | null;
 };
 
 export function createTenancyGuard(options: TenancyGuardOptions) {
@@ -35,7 +35,7 @@ export function createTenancyGuard(options: TenancyGuardOptions) {
         activeTenantId: auth.session.activeTenantId,
         activeBranchId: auth.session.activeBranchId,
       },
-      access: options.getAccessSnapshot(request, auth),
+      access: await options.getAccessSnapshot(request, auth),
     });
 
     request.tenancy = tenancy;

@@ -55,6 +55,10 @@ export function resolveInternalTenancyContext(
     );
   }
 
+  if (input.routeIntent.requestedScope === "global") {
+    throw new TenancyError("unsupported_tenancy_scope");
+  }
+
   const activeTenantId = requireActiveTenantId(input.session);
   const access = requireAccess(input.access);
 

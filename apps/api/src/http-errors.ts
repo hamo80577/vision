@@ -136,6 +136,26 @@ function createTenancyProblem(
   request: FastifyRequest,
   context: ObservabilityContext
 ): ApiProblemResult {
+  if (
+    error.code === "tenant_db_context_required" ||
+    error.code === "unsupported_tenancy_scope"
+  ) {
+    const definition = getProblemDefinitionForStatus(500);
+
+    return {
+      statusCode: definition.status,
+      problem: createProblemDetails({
+        type: definition.type,
+        title: definition.title,
+        status: definition.status,
+        code: error.code,
+        detail: "An unexpected error occurred.",
+        instance: getRequestInstance(request),
+        traceId: context.traceId
+      })
+    };
+  }
+
   return {
     statusCode: 403,
     problem: createProblemDetails({
