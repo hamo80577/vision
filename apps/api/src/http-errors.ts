@@ -99,6 +99,8 @@ function createProblemFromError(
       code: error.code,
       detail: error.message,
       instance: getRequestInstance(request),
+      requiredAssurance: error.requiredAssurance,
+      denialReason: error.denialReason,
       traceId: context.traceId,
       errors: error.errors
     })

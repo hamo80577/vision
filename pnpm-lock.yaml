@@ -68,6 +68,10 @@ importers:
       fastify:
         specifier: latest
         version: 5.8.5
+    devDependencies:
+      otpauth:
+        specifier: ^9.4.1
+        version: 9.5.0
 
   apps/erp:
     dependencies:

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { eq } from "drizzle-orm";
 import { inArray } from "drizzle-orm";
+import * as OTPAuth from "otpauth";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -23,6 +24,8 @@ import { AUTH_SESSION_COOKIE_NAME } from "./auth-cookie";
 import { buildApi } from "./server";
 
 const AUTH_ROUTE_TEST_TIMEOUT_MS = 20_000;
+const MFA_ENCRYPTION_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+const FIXED_TEST_TIME = new Date("2026-04-21T12:00:00.000Z");
 
 const { appEnv, databaseUrl } = getDatabaseRuntimeConfig(process.env);
 
@@ -31,6 +34,8 @@ const runtime = {
   host: "127.0.0.1",
   port: 4000,
   databaseUrl,
+  mfaEncryptionKey: MFA_ENCRYPTION_KEY,
+  mfaEncryptionKeyVersion: "v1",
   logLevel: "debug",
   serviceName: "vision-api",
 } as const;
@@ -38,7 +43,11 @@ const runtime = {
 const pool = createDatabasePool(databaseUrl);
 const db = createDatabaseClient(pool);
 const authn = createAuthnService(db, {
+  now: () => new Date(FIXED_TEST_TIME),
   sessionTtlMs: 60 * 60 * 1000,
+  mfaEncryptionKey: MFA_ENCRYPTION_KEY,
+  mfaEncryptionKeyVersion: "v1",
+  totpIssuer: "Vision",
 });
 let createdSubjectIds: string[] = [];
 let createdSessionIds: string[] = [];
@@ -57,6 +66,12 @@ async function seedSubject(
   subjectType: "customer" | "internal",
   loginIdentifier: string,
   password: string,
+  internalSensitivity:
+    | "none"
+    | "platform_admin"
+    | "tenant_owner"
+    | "branch_manager"
+    | null = null,
 ) {
   const id = `sub_${randomUUID()}`;
   createdSubjectIds.push(id);
@@ -67,6 +82,7 @@ async function seedSubject(
     loginIdentifier,
     normalizedLoginIdentifier: normalizeLoginIdentifier(loginIdentifier),
     passwordHash: await hashPassword(password),
+    internalSensitivity,
   });
 }
 
@@ -343,6 +359,156 @@ describe("auth routes", () => {
 
       expect(oldTokenResponse.statusCode).toBe(401);
       expect(newTokenResponse.statusCode).toBe(200);
+
+      await api.close();
+    },
+    AUTH_ROUTE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "returns a pending challenge for a sensitive internal login without setting a cookie",
+    async () => {
+      const api = buildApi({ runtime, authService: authn });
+      const loginIdentifier = `admin+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!", "platform_admin");
+
+      const response = await api.inject({
+        method: "POST",
+        url: "/auth/internal/login",
+        payload: {
+          loginIdentifier,
+          password: "S3cure-password!",
+        },
+      });
+
+      expect(response.statusCode).toBe(202);
+      expect(response.headers["set-cookie"]).toBeUndefined();
+      expect(response.json()).toMatchObject({
+        nextStep: "mfa_enrollment_required",
+        requiredAssurance: "mfa_verified",
+      });
+
+      await api.close();
+    },
+    AUTH_ROUTE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "completes MFA enrollment and sets a real auth cookie only after verification",
+    async () => {
+      const api = buildApi({ runtime, authService: authn });
+      const loginIdentifier = `owner+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!", "tenant_owner");
+
+      const login = await api.inject({
+        method: "POST",
+        url: "/auth/internal/login",
+        payload: {
+          loginIdentifier,
+          password: "S3cure-password!",
+        },
+      });
+      const challengeToken = (login.json() as { challengeToken: string }).challengeToken;
+
+      const start = await api.inject({
+        method: "POST",
+        url: "/auth/internal/mfa/enrollment/start",
+        payload: {
+          challengeToken,
+          accountName: loginIdentifier,
+        },
+      });
+      const enrollment = start.json() as { manualEntryKey: string };
+      const totp = new OTPAuth.TOTP({
+        issuer: "Vision",
+        label: loginIdentifier,
+        algorithm: "SHA1",
+        digits: 6,
+        period: 30,
+        secret: OTPAuth.Secret.fromBase32(enrollment.manualEntryKey),
+      });
+      const code = totp.generate({ timestamp: FIXED_TEST_TIME.getTime() });
+
+      const verify = await api.inject({
+        method: "POST",
+        url: "/auth/internal/mfa/enrollment/verify",
+        payload: {
+          challengeToken,
+          code,
+        },
+      });
+
+      expect(verify.statusCode).toBe(200);
+      expect(verify.headers["set-cookie"]).toContain("HttpOnly");
+      expect(verify.json()).toMatchObject({
+        session: {
+          assuranceLevel: "mfa_verified",
+        },
+      });
+
+      await api.close();
+    },
+    AUTH_ROUTE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "returns 403 insufficient_assurance when backup-code regeneration is called without step-up",
+    async () => {
+      const api = buildApi({ runtime, authService: authn });
+      const loginIdentifier = `manager+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!", "branch_manager");
+
+      const login = await api.inject({
+        method: "POST",
+        url: "/auth/internal/login",
+        payload: {
+          loginIdentifier,
+          password: "S3cure-password!",
+        },
+      });
+      const challengeToken = (login.json() as { challengeToken: string }).challengeToken;
+      const start = await api.inject({
+        method: "POST",
+        url: "/auth/internal/mfa/enrollment/start",
+        payload: {
+          challengeToken,
+          accountName: loginIdentifier,
+        },
+      });
+      const enrollment = start.json() as { manualEntryKey: string };
+      const totp = new OTPAuth.TOTP({
+        issuer: "Vision",
+        label: loginIdentifier,
+        algorithm: "SHA1",
+        digits: 6,
+        period: 30,
+        secret: OTPAuth.Secret.fromBase32(enrollment.manualEntryKey),
+      });
+      const code = totp.generate({ timestamp: FIXED_TEST_TIME.getTime() });
+      const verify = await api.inject({
+        method: "POST",
+        url: "/auth/internal/mfa/enrollment/verify",
+        payload: {
+          challengeToken,
+          code,
+        },
+      });
+      const cookie = getAuthCookie(verify.headers["set-cookie"]);
+
+      const response = await api.inject({
+        method: "POST",
+        url: "/auth/internal/mfa/backup-codes/regenerate",
+        headers: {
+          cookie,
+        },
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({
+        code: "insufficient_assurance",
+        requiredAssurance: "step_up_verified",
+        denialReason: "step_up_required",
+      });
 
       await api.close();
     },
