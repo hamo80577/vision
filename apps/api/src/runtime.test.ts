@@ -9,6 +9,8 @@ const validApiEnv = {
   API_PORT: "4000",
   DATABASE_URL:
     "postgresql://vision_local:vision_local_password@localhost:5432/vision_local",
+  AUTH_MFA_ENCRYPTION_KEY: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+  AUTH_MFA_ENCRYPTION_KEY_VERSION: "v1",
   LOG_LEVEL: "debug"
 };
 
@@ -20,6 +22,8 @@ describe("runtime", () => {
       port: 4000,
       databaseUrl:
         "postgresql://vision_local:vision_local_password@localhost:5432/vision_local",
+      mfaEncryptionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+      mfaEncryptionKeyVersion: "v1",
       logLevel: "debug",
       serviceName: "vision-api"
     });

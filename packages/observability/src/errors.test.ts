@@ -46,4 +46,21 @@ describe("errors", () => {
     expect(error.problem.instance).toBe("/orders/1");
     expect(error.problem.traceId).toBeUndefined();
   });
+
+  it("carries safe assurance metadata for insufficient assurance responses", () => {
+    const error = new ProblemError({
+      status: 403,
+      code: "insufficient_assurance",
+      title: "Insufficient Assurance",
+      type: "https://vision.local/problems/insufficient-assurance",
+      detail: "Step-up verification is required.",
+      requiredAssurance: "step_up_verified",
+      denialReason: "step_up_required"
+    });
+
+    expect(error.requiredAssurance).toBe("step_up_verified");
+    expect(error.denialReason).toBe("step_up_required");
+    expect(error.problem.requiredAssurance).toBe("step_up_verified");
+    expect(error.problem.denialReason).toBe("step_up_required");
+  });
 });
