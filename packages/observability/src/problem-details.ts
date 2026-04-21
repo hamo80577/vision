@@ -6,6 +6,13 @@ export type ProblemCode =
   | "unauthenticated"
   | "forbidden"
   | "insufficient_assurance"
+  | "unsupported_actor"
+  | "unsupported_resource"
+  | "unsupported_action"
+  | "missing_context"
+  | "insufficient_scope"
+  | "self_access_only"
+  | "explicit_deny"
   | "not_found"
   | "conflict";
 

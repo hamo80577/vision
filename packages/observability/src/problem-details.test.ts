@@ -127,4 +127,20 @@ describe("problem-details", () => {
     expect(value.denialReason).toBe("step_up_required");
     expect(value.errors).toBeUndefined();
   });
+
+  it("supports authz denial codes without exposing debug metadata", () => {
+    const value = createProblemDetails({
+      type: "https://vision.dev/problems/forbidden",
+      title: "Forbidden",
+      status: 403,
+      code: "missing_context",
+      detail: "Forbidden",
+      requiredAssurance: "step_up_verified"
+    });
+
+    expect(value.code).toBe("missing_context");
+    expect(value.requiredAssurance).toBe("step_up_verified");
+    expect(value).not.toHaveProperty("debug");
+    expect(value.denialReason).toBeUndefined();
+  });
 });

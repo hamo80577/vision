@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   ProblemError,
   getProblemDefinitionForStatus,
-  isProblemError
+  isProblemError,
+  serializeErrorForLog
 } from "./errors";
 
 describe("errors", () => {
@@ -62,5 +63,25 @@ describe("errors", () => {
     expect(error.denialReason).toBe("step_up_required");
     expect(error.problem.requiredAssurance).toBe("step_up_verified");
     expect(error.problem.denialReason).toBe("step_up_required");
+  });
+
+  it("serializeErrorForLog carries safe debug metadata for authz-style errors", () => {
+    const error = Object.assign(new Error("Forbidden"), {
+      code: "insufficient_scope",
+      requiredAssurance: "step_up_verified",
+      debug: {
+        policyFamily: "tenant_settings",
+        missingFacts: ["targetTenantId"]
+      }
+    });
+
+    expect(serializeErrorForLog(error)).toMatchObject({
+      code: "insufficient_scope",
+      requiredAssurance: "step_up_verified",
+      debug: {
+        policyFamily: "tenant_settings",
+        missingFacts: ["targetTenantId"]
+      }
+    });
   });
 });

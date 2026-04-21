@@ -1,39 +1,32 @@
 import fastifyCookie from "@fastify/cookie";
 import type { FastifyPluginAsync } from "fastify";
+import fp from "fastify-plugin";
 
 import {
   AuthnError,
   createAuthnService,
   isAuthnError,
-  type AuthResolution,
-  type AuthnService,
+  type AuthnService
 } from "@vision/authn";
 import { closeDatabasePool, createRuntimeDatabase } from "@vision/db";
-import { ProblemError, getProblemDefinitionForStatus } from "@vision/observability";
+import { ProblemError } from "@vision/observability";
 
-import type { ApiRuntimeConfig } from "./runtime";
+import {
+  createUnauthenticatedProblem,
+  getAuthFailureDetail,
+  requireAuthenticatedRequest
+} from "./auth-request";
 import {
   clearAuthCookie,
   readAuthCookie,
-  setAuthCookie,
+  setAuthCookie
 } from "./auth-cookie";
+import type { ApiRuntimeConfig } from "./runtime";
 
 type AuthPluginOptions = {
   runtime: ApiRuntimeConfig;
   authService?: AuthnService;
 };
-
-type RequestWithAuth = {
-  auth: AuthResolution | null;
-  authFailure: AuthnError["code"] | null;
-};
-
-function unauthenticated(detail: string): ProblemError {
-  return new ProblemError({
-    ...getProblemDefinitionForStatus(401),
-    detail,
-  });
-}
 
 function insufficientAssurance(error: AuthnError): ProblemError {
   return new ProblemError({
@@ -43,29 +36,8 @@ function insufficientAssurance(error: AuthnError): ProblemError {
     type: "https://vision.local/problems/insufficient-assurance",
     detail: error.message,
     requiredAssurance: error.context.requiredAssurance,
-    denialReason: error.context.denialReason,
+    denialReason: error.context.denialReason
   });
-}
-
-function getAuthFailureDetail(code: AuthnError["code"] | null): string {
-  switch (code) {
-    case "invalid_credentials":
-      return "Invalid login credentials.";
-    case "expired_session":
-      return "Session has expired.";
-    case "revoked_session":
-      return "Session has been revoked.";
-    default:
-      return "Authentication required.";
-  }
-}
-
-function requireAuth(request: RequestWithAuth): AuthResolution {
-  if (request.auth) {
-    return request.auth;
-  }
-
-  throw unauthenticated(getAuthFailureDetail(request.authFailure));
 }
 
 function mapAuthnError(error: AuthnError): never {
@@ -85,11 +57,11 @@ function mapAuthnError(error: AuthnError): never {
       title: "Validation Error",
       status: 422,
       code: "validation_error",
-      detail: error.message,
+      detail: error.message
     });
   }
 
-  throw unauthenticated(getAuthFailureDetail(error.code));
+  throw createUnauthenticatedProblem(getAuthFailureDetail(error.code));
 }
 
 function getRuntimeDatabase(options: AuthPluginOptions) {
@@ -99,13 +71,13 @@ function getRuntimeDatabase(options: AuthPluginOptions) {
 
   return createRuntimeDatabase({
     appEnv: options.runtime.appEnv,
-    databaseUrl: options.runtime.databaseUrl,
+    databaseUrl: options.runtime.databaseUrl
   });
 }
 
-export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
+const authPluginImpl: FastifyPluginAsync<AuthPluginOptions> = async (
   api,
-  options,
+  options
 ) => {
   await api.register(fastifyCookie);
 
@@ -122,8 +94,8 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
       })(),
       {
         mfaEncryptionKey: options.runtime.mfaEncryptionKey,
-        mfaEncryptionKeyVersion: options.runtime.mfaEncryptionKeyVersion,
-      },
+        mfaEncryptionKeyVersion: options.runtime.mfaEncryptionKeyVersion
+      }
     );
 
   if (runtimeDatabase) {
@@ -164,9 +136,9 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
       additionalProperties: false,
       properties: {
         loginIdentifier: { type: "string", minLength: 1 },
-        password: { type: "string", minLength: 1 },
-      },
-    },
+        password: { type: "string", minLength: 1 }
+      }
+    }
   } as const;
 
   api.post("/auth/customer/login", { schema: loginSchema }, async (request, reply) => {
@@ -175,7 +147,7 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
       const result = await authService.login({
         subjectType: "customer",
         loginIdentifier: body.loginIdentifier,
-        password: body.password,
+        password: body.password
       });
 
       if (result.kind !== "session") {
@@ -186,12 +158,12 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
         reply,
         options.runtime.appEnv,
         result.sessionToken,
-        result.session.expiresAt,
+        result.session.expiresAt
       );
 
       return {
         subject: result.subject,
-        session: result.session,
+        session: result.session
       };
     } catch (error) {
       if (isAuthnError(error)) {
@@ -208,7 +180,7 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
       const result = await authService.login({
         subjectType: "internal",
         loginIdentifier: body.loginIdentifier,
-        password: body.password,
+        password: body.password
       });
 
       if (result.kind === "mfa_challenge") {
@@ -220,7 +192,7 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
 
       return {
         subject: result.subject,
-        session: result.session,
+        session: result.session
       };
     } catch (error) {
       if (isAuthnError(error)) {
@@ -253,7 +225,7 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
       return {
         subject: result.subject,
         session: result.session,
-        backupCodes: result.backupCodes,
+        backupCodes: result.backupCodes
       };
     } catch (error) {
       if (isAuthnError(error)) {
@@ -274,13 +246,13 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
       const result = await authService.verifyMfaChallenge({
         challengeToken: body.challengeToken,
         totpCode: body.code,
-        backupCode: body.backupCode,
+        backupCode: body.backupCode
       });
 
       setAuthCookie(reply, options.runtime.appEnv, result.sessionToken, result.session.expiresAt);
       return {
         subject: result.subject,
-        session: result.session,
+        session: result.session
       };
     } catch (error) {
       if (isAuthnError(error)) {
@@ -292,10 +264,11 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
   });
 
   api.post("/auth/internal/assurance/step-up/start", async (request) => {
+    requireAuthenticatedRequest(request);
     const token = readAuthCookie(request);
 
     if (!token) {
-      throw unauthenticated("Authentication required.");
+      throw createUnauthenticatedProblem("Authentication required.");
     }
 
     try {
@@ -307,7 +280,7 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
           | "support_grant_activation"
           | "website_management_write"
           | "data_export"
-          | "credential_reset",
+          | "credential_reset"
       });
     } catch (error) {
       if (isAuthnError(error)) {
@@ -319,10 +292,11 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
   });
 
   api.post("/auth/internal/assurance/step-up/verify", async (request) => {
+    requireAuthenticatedRequest(request);
     const token = readAuthCookie(request);
 
     if (!token) {
-      throw unauthenticated("Authentication required.");
+      throw createUnauthenticatedProblem("Authentication required.");
     }
 
     try {
@@ -335,12 +309,12 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
         token,
         challengeToken: body.challengeToken,
         totpCode: body.code,
-        backupCode: body.backupCode,
+        backupCode: body.backupCode
       });
 
       return {
         subject: result.subject,
-        session: result.session,
+        session: result.session
       };
     } catch (error) {
       if (isAuthnError(error)) {
@@ -352,10 +326,11 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
   });
 
   api.post("/auth/internal/mfa/backup-codes/regenerate", async (request) => {
+    requireAuthenticatedRequest(request);
     const token = readAuthCookie(request);
 
     if (!token) {
-      throw unauthenticated("Authentication required.");
+      throw createUnauthenticatedProblem("Authentication required.");
     }
 
     try {
@@ -372,7 +347,7 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
 
   api.get("/auth/session", async (request, reply) => {
     try {
-      return requireAuth(request);
+      return requireAuthenticatedRequest(request);
     } catch (error) {
       clearAuthCookie(reply, options.runtime.appEnv);
       throw error;
@@ -384,7 +359,7 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
 
     if (!token) {
       clearAuthCookie(reply, options.runtime.appEnv);
-      throw unauthenticated("Authentication required.");
+      throw createUnauthenticatedProblem("Authentication required.");
     }
 
     try {
@@ -403,3 +378,7 @@ export const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (
     }
   });
 };
+
+export const authPlugin = fp(authPluginImpl, {
+  name: "auth-plugin"
+});

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import * as OTPAuth from "otpauth";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -34,6 +34,13 @@ const authn = createAuthnService(db, {
 });
 let createdSubjectIds: string[] = [];
 let createdSessionIds: string[] = [];
+
+async function listSessionsForSubject(subjectId: string) {
+  return db
+    .select()
+    .from(authSessions)
+    .where(eq(authSessions.subjectId, subjectId));
+}
 
 async function seedSubject(
   subjectType: "customer" | "internal",
@@ -129,7 +136,7 @@ describe("createAuthnService", () => {
     "rejects invalid credentials without creating a session",
     async () => {
       const loginIdentifier = `ops+${randomUUID()}@vision.test`;
-      await seedSubject("internal", loginIdentifier, "S3cure-password!");
+      const subject = await seedSubject("internal", loginIdentifier, "S3cure-password!");
 
       await expect(
         authn.login({
@@ -141,7 +148,7 @@ describe("createAuthnService", () => {
         code: "invalid_credentials",
       });
 
-      await expect(db.select().from(authSessions)).resolves.toHaveLength(0);
+      await expect(listSessionsForSubject(subject.id)).resolves.toHaveLength(0);
     },
     AUTHN_INTEGRATION_TIMEOUT_MS,
   );
@@ -150,7 +157,12 @@ describe("createAuthnService", () => {
     "returns a pending challenge for a sensitive internal login without creating a session",
     async () => {
       const loginIdentifier = `admin+${randomUUID()}@vision.test`;
-      await seedSubject("internal", loginIdentifier, "S3cure-password!", "platform_admin");
+      const subject = await seedSubject(
+        "internal",
+        loginIdentifier,
+        "S3cure-password!",
+        "platform_admin",
+      );
 
       const result = await authn.login({
         subjectType: "internal",
@@ -163,7 +175,7 @@ describe("createAuthnService", () => {
         nextStep: "mfa_enrollment_required",
         requiredAssurance: "mfa_verified",
       });
-      await expect(db.select().from(authSessions)).resolves.toHaveLength(0);
+      await expect(listSessionsForSubject(subject.id)).resolves.toHaveLength(0);
     },
     AUTHN_INTEGRATION_TIMEOUT_MS,
   );
