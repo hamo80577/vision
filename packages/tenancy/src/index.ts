@@ -5,6 +5,8 @@ export {
   isTenancyError,
   requireResolvedTenancyContext,
 } from "./errors";
+export { toDatabaseAccessContext } from "./db-context";
+export { resolveInternalTenancyContext } from "./resolve-internal-tenancy-context";
 export type {
   ActiveTenantAccessSnapshot,
   DatabaseAccessContext,
