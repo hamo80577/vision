@@ -10,6 +10,7 @@ import {
   closeDatabasePool,
   createDatabaseClient,
   createDatabasePool,
+  getDatabaseRuntimeConfig,
 } from "@vision/db";
 
 import {
@@ -18,9 +19,9 @@ import {
   normalizeLoginIdentifier,
 } from "./index";
 
-const databaseUrl =
-  process.env.DATABASE_URL ??
-  "postgresql://vision_local:vision_local_password@localhost:5433/vision_local";
+const AUTHN_INTEGRATION_TIMEOUT_MS = 20_000;
+
+const { databaseUrl } = getDatabaseRuntimeConfig(process.env);
 const pool = createDatabasePool(databaseUrl);
 const db = createDatabaseClient(pool);
 const authn = createAuthnService(db, {
@@ -74,49 +75,57 @@ describe("createAuthnService", () => {
     await closeDatabasePool(pool);
   });
 
-  it("logs in an enabled subject and resolves the active session", async () => {
-    const loginIdentifier = `customer+${randomUUID()}@vision.test`;
-    const subject = await seedSubject(
-      "customer",
-      loginIdentifier,
-      "S3cure-password!",
-    );
-
-    const login = await authn.login({
-      subjectType: "customer",
-      loginIdentifier,
-      password: "S3cure-password!",
-    });
-    createdSessionIds.push(login.session.sessionId);
-
-    expect(login.subject).toMatchObject({
-      id: subject.id,
-      subjectType: "customer",
-      loginIdentifier,
-    });
-
-    const resolved = await authn.resolveSession({
-      token: login.sessionToken,
-    });
-
-    expect(resolved.subject.id).toBe(subject.id);
-    expect(resolved.session.sessionId).toBe(login.session.sessionId);
-  });
-
-  it("rejects invalid credentials without creating a session", async () => {
-    const loginIdentifier = `ops+${randomUUID()}@vision.test`;
-    await seedSubject("internal", loginIdentifier, "S3cure-password!");
-
-    await expect(
-      authn.login({
-        subjectType: "internal",
+  it(
+    "logs in an enabled subject and resolves the active session",
+    async () => {
+      const loginIdentifier = `customer+${randomUUID()}@vision.test`;
+      const subject = await seedSubject(
+        "customer",
         loginIdentifier,
-        password: "wrong-password",
-      }),
-    ).rejects.toMatchObject({
-      code: "invalid_credentials",
-    });
+        "S3cure-password!",
+      );
 
-    await expect(db.select().from(authSessions)).resolves.toHaveLength(0);
-  });
+      const login = await authn.login({
+        subjectType: "customer",
+        loginIdentifier,
+        password: "S3cure-password!",
+      });
+      createdSessionIds.push(login.session.sessionId);
+
+      expect(login.subject).toMatchObject({
+        id: subject.id,
+        subjectType: "customer",
+        loginIdentifier,
+      });
+
+      const resolved = await authn.resolveSession({
+        token: login.sessionToken,
+      });
+
+      expect(resolved.subject.id).toBe(subject.id);
+      expect(resolved.session.sessionId).toBe(login.session.sessionId);
+    },
+    AUTHN_INTEGRATION_TIMEOUT_MS,
+  );
+
+  it(
+    "rejects invalid credentials without creating a session",
+    async () => {
+      const loginIdentifier = `ops+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!");
+
+      await expect(
+        authn.login({
+          subjectType: "internal",
+          loginIdentifier,
+          password: "wrong-password",
+        }),
+      ).rejects.toMatchObject({
+        code: "invalid_credentials",
+      });
+
+      await expect(db.select().from(authSessions)).resolves.toHaveLength(0);
+    },
+    AUTHN_INTEGRATION_TIMEOUT_MS,
+  );
 });

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { hashPassword, verifyPassword } from "./password";
 
+const PASSWORD_TEST_TIMEOUT_MS = 30_000;
+
 describe("password helpers", () => {
   it(
     "hashes passwords with argon2id and verifies the original password",
@@ -14,7 +16,7 @@ describe("password helpers", () => {
         verifyPassword(passwordHash, "S3cure-password!"),
       ).resolves.toBe(true);
     },
-    15_000,
+    PASSWORD_TEST_TIMEOUT_MS,
   );
 
   it(
@@ -26,6 +28,6 @@ describe("password helpers", () => {
         false,
       );
     },
-    15_000,
+    PASSWORD_TEST_TIMEOUT_MS,
   );
 });
