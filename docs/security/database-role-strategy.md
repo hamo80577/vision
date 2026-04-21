@@ -19,3 +19,12 @@ Vision distinguishes between runtime database access and admin database access.
 ## Boundary
 
 This split exists now so later phases can tighten privileges without reworking every script and config path.
+
+## Transaction-Local Execution Context
+
+Phase 8 adds transaction-local DB access-context propagation for tenant-scoped work.
+
+- runtime code must set trusted `vision.tenant_id`
+- branch, subject, subject type, and session ID may also be set transaction-locally
+- the DB helper must fail closed when tenant context is missing
+- this helper is infrastructure only and does not replace tenancy resolution or authz

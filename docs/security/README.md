@@ -14,6 +14,7 @@ Security decisions must preserve:
 Current implementation notes:
 
 - [Authorization Engine](./authorization-engine.md)
+- [Tenancy Execution Context](./tenancy-execution-context.md)
 - [MFA And Assurance](./mfa-and-assurance.md)
 - [Logging And Error Safety](./logging-and-error-safety.md)
 - [Secrets Strategy](./secrets-strategy.md)
