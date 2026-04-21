@@ -13,11 +13,13 @@
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
     "@vision/authn": "workspace:*",
+    "@vision/authz": "workspace:*",
     "@vision/config": "workspace:*",
     "@vision/db": "workspace:*",
     "@vision/observability": "workspace:*",
     "drizzle-orm": "^0.45.2",
-    "fastify": "latest"
+    "fastify": "latest",
+    "fastify-plugin": "^5.0.1"
   },
   "devDependencies": {
     "otpauth": "^9.4.1"

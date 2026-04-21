@@ -1,5 +1,6 @@
 import { STATUS_CODES } from "node:http";
 
+import { AuthzError, isAuthzError } from "@vision/authz";
 import type { FastifyRequest } from "fastify";
 
 import {
@@ -107,6 +108,28 @@ function createProblemFromError(
   };
 }
 
+function createAuthzProblem(
+  error: AuthzError,
+  request: FastifyRequest,
+  context: ObservabilityContext
+): ApiProblemResult {
+  const definition = getProblemDefinitionForStatus(403);
+
+  return {
+    statusCode: definition.status,
+    problem: createProblemDetails({
+      type: definition.type,
+      title: definition.title,
+      status: definition.status,
+      code: error.code,
+      detail: definition.title,
+      instance: getRequestInstance(request),
+      requiredAssurance: error.requiredAssurance,
+      traceId: context.traceId
+    })
+  };
+}
+
 function createValidationProblem(
   error: FastifyValidationError,
   request: FastifyRequest,
@@ -177,6 +200,10 @@ export function mapApiErrorToProblem(
   request: FastifyRequest,
   context: ObservabilityContext
 ): ApiProblemResult {
+  if (isAuthzError(error)) {
+    return createAuthzProblem(error, request, context);
+  }
+
   if (isProblemError(error)) {
     return createProblemFromError(error, request, context);
   }

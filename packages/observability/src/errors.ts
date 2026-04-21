@@ -131,6 +131,7 @@ export function serializeErrorForLog(error: unknown): Record<string, unknown> {
       statusCode?: unknown;
       requiredAssurance?: unknown;
       denialReason?: unknown;
+      debug?: unknown;
     };
 
     const serialized: Record<string, unknown> = {
@@ -164,6 +165,15 @@ export function serializeErrorForLog(error: unknown): Record<string, unknown> {
       candidate.denialReason === "step_up_stale"
     ) {
       serialized.denialReason = candidate.denialReason;
+    }
+
+    if (
+      candidate.debug !== undefined &&
+      typeof candidate.debug === "object" &&
+      candidate.debug !== null &&
+      !Array.isArray(candidate.debug)
+    ) {
+      serialized.debug = candidate.debug;
     }
 
     return serialized;
@@ -207,6 +217,15 @@ export function serializeErrorForLog(error: unknown): Record<string, unknown> {
       record.denialReason === "step_up_stale"
     ) {
       serialized.denialReason = record.denialReason;
+    }
+
+    if (
+      record.debug !== undefined &&
+      typeof record.debug === "object" &&
+      record.debug !== null &&
+      !Array.isArray(record.debug)
+    ) {
+      serialized.debug = record.debug;
     }
 
     return serialized;
