@@ -7,6 +7,8 @@ Phase 4 introduces structured logs and a lightweight Problem Details response mo
 - Do not log secrets.
 - Do not log passwords.
 - Do not log raw MFA material.
+- Do not log challenge tokens.
+- Do not log raw backup codes.
 - Do not dump full exception objects into default logs.
 - Do not log unnecessary PII.
 

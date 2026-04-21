@@ -11,4 +11,10 @@ Security decisions must preserve:
 - grant-based support access
 - auditability for sensitive operations
 
+Current implementation notes:
+
+- [MFA And Assurance](./mfa-and-assurance.md)
+- [Logging And Error Safety](./logging-and-error-safety.md)
+- [Secrets Strategy](./secrets-strategy.md)
+
 The full security target is defined in `Vision_Greenfield_Blueprint.md` and `agent.md`.
