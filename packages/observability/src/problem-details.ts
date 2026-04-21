@@ -29,6 +29,17 @@ export type ProblemDetailsInput = Omit<ProblemDetails, "instance"> & {
   instance?: string;
 };
 
+function sanitizeAuthorityLikePath(value: string): string {
+  const withoutLeadingSlashes = value.replace(/^\/+/, "");
+  const firstPathSeparator = withoutLeadingSlashes.indexOf("/");
+
+  if (firstPathSeparator === -1) {
+    return "/";
+  }
+
+  return withoutLeadingSlashes.slice(firstPathSeparator);
+}
+
 export function sanitizeProblemInstance(value: string | undefined): string {
   if (typeof value !== "string") {
     return "/";
@@ -45,7 +56,10 @@ export function sanitizeProblemInstance(value: string | undefined): string {
     const parsed = new URL(input);
     pathOnly = parsed.pathname;
   } catch {
-    pathOnly = input.split("?")[0]?.split("#")[0] ?? "";
+    const withoutQueryOrHash = input.split("?")[0]?.split("#")[0] ?? "";
+    pathOnly = withoutQueryOrHash.startsWith("//")
+      ? sanitizeAuthorityLikePath(withoutQueryOrHash)
+      : withoutQueryOrHash;
   }
 
   if (pathOnly.length === 0) {

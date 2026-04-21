@@ -7,6 +7,12 @@ describe("problem-details", () => {
     expect(sanitizeProblemInstance("https://example.com/orders/1?token=secret")).toBe(
       "/orders/1"
     );
+    expect(sanitizeProblemInstance("//example.com/orders/1?token=secret")).toBe(
+      "/orders/1"
+    );
+    expect(sanitizeProblemInstance("///example.com/orders/1#section")).toBe(
+      "/orders/1"
+    );
     expect(sanitizeProblemInstance("/orders/2?debug=true")).toBe("/orders/2");
     expect(sanitizeProblemInstance(undefined)).toBe("/");
     expect(sanitizeProblemInstance("")).toBe("/");
@@ -68,6 +74,17 @@ describe("problem-details", () => {
     });
 
     expect(fullUrl.instance).toBe("/private/orders/7");
+
+    const protocolRelativeUrl = createProblemDetails({
+      type: "https://vision.dev/problems/not-found",
+      title: "Not Found",
+      status: 404,
+      code: "not_found",
+      detail: "Missing record",
+      instance: "//example.com/private/orders/7?token=abc"
+    });
+
+    expect(protocolRelativeUrl.instance).toBe("/private/orders/7");
   });
 
   it("uses the validation extension shape as errors", () => {
