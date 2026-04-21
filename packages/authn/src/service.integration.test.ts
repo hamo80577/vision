@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { inArray } from "drizzle-orm";
+import * as OTPAuth from "otpauth";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -20,12 +21,16 @@ import {
 } from "./index";
 
 const AUTHN_INTEGRATION_TIMEOUT_MS = 20_000;
+const MFA_ENCRYPTION_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 
 const { databaseUrl } = getDatabaseRuntimeConfig(process.env);
 const pool = createDatabasePool(databaseUrl);
 const db = createDatabaseClient(pool);
 const authn = createAuthnService(db, {
   sessionTtlMs: 60 * 60 * 1000,
+  mfaEncryptionKey: MFA_ENCRYPTION_KEY,
+  mfaEncryptionKeyVersion: "v1",
+  totpIssuer: "Vision",
 });
 let createdSubjectIds: string[] = [];
 let createdSessionIds: string[] = [];
@@ -34,6 +39,12 @@ async function seedSubject(
   subjectType: "customer" | "internal",
   loginIdentifier: string,
   password: string,
+  internalSensitivity:
+    | "none"
+    | "platform_admin"
+    | "tenant_owner"
+    | "branch_manager"
+    | null = null,
 ) {
   const id = `sub_${randomUUID()}`;
   createdSubjectIds.push(id);
@@ -44,6 +55,7 @@ async function seedSubject(
     loginIdentifier,
     normalizedLoginIdentifier: normalizeLoginIdentifier(loginIdentifier),
     passwordHash: await hashPassword(password),
+    internalSensitivity,
   });
 
   return { id };
@@ -125,6 +137,220 @@ describe("createAuthnService", () => {
       });
 
       await expect(db.select().from(authSessions)).resolves.toHaveLength(0);
+    },
+    AUTHN_INTEGRATION_TIMEOUT_MS,
+  );
+
+  it(
+    "returns a pending challenge for a sensitive internal login without creating a session",
+    async () => {
+      const loginIdentifier = `admin+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!", "platform_admin");
+
+      const result = await authn.login({
+        subjectType: "internal",
+        loginIdentifier,
+        password: "S3cure-password!",
+      });
+
+      expect(result).toMatchObject({
+        kind: "mfa_challenge",
+        nextStep: "mfa_enrollment_required",
+        requiredAssurance: "mfa_verified",
+      });
+      await expect(db.select().from(authSessions)).resolves.toHaveLength(0);
+    },
+    AUTHN_INTEGRATION_TIMEOUT_MS,
+  );
+
+  it(
+    "verifies TOTP enrollment and issues the first mfa_verified session with backup codes",
+    async () => {
+      const loginIdentifier = `owner+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!", "tenant_owner");
+
+      const login = await authn.login({
+        subjectType: "internal",
+        loginIdentifier,
+        password: "S3cure-password!",
+      });
+
+      if (login.kind !== "mfa_challenge") {
+        throw new Error("Expected MFA challenge result.");
+      }
+
+      const enrollment = await authn.startMfaEnrollment({
+        challengeToken: login.challengeToken,
+        accountName: loginIdentifier,
+      });
+      const now = new Date();
+      const totp = new OTPAuth.TOTP({
+        issuer: "Vision",
+        label: loginIdentifier,
+        algorithm: "SHA1",
+        digits: 6,
+        period: 30,
+        secret: OTPAuth.Secret.fromBase32(enrollment.manualEntryKey),
+      });
+      const code = totp.generate({ timestamp: now.getTime() });
+      const completed = await authn.verifyMfaEnrollment({
+        challengeToken: login.challengeToken,
+        code,
+        now,
+      });
+      createdSessionIds.push(completed.session.sessionId);
+
+      expect(completed.session.assuranceLevel).toBe("mfa_verified");
+      expect(completed.backupCodes).toHaveLength(8);
+      expect(completed.backupCodes[0]).not.toContain("-");
+    },
+    AUTHN_INTEGRATION_TIMEOUT_MS,
+  );
+
+  it(
+    "uses a backup code only once across repeated sensitive logins",
+    async () => {
+      const loginIdentifier = `manager+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!", "branch_manager");
+
+      const firstLogin = await authn.login({
+        subjectType: "internal",
+        loginIdentifier,
+        password: "S3cure-password!",
+      });
+
+      if (firstLogin.kind !== "mfa_challenge") {
+        throw new Error("Expected MFA challenge result.");
+      }
+
+      const enrollment = await authn.startMfaEnrollment({
+        challengeToken: firstLogin.challengeToken,
+        accountName: loginIdentifier,
+      });
+      const now = new Date();
+      const totp = new OTPAuth.TOTP({
+        issuer: "Vision",
+        label: loginIdentifier,
+        algorithm: "SHA1",
+        digits: 6,
+        period: 30,
+        secret: OTPAuth.Secret.fromBase32(enrollment.manualEntryKey),
+      });
+      const enrollmentCode = totp.generate({ timestamp: now.getTime() });
+      const completedEnrollment = await authn.verifyMfaEnrollment({
+        challengeToken: firstLogin.challengeToken,
+        code: enrollmentCode,
+        now,
+      });
+      createdSessionIds.push(completedEnrollment.session.sessionId);
+
+      const backupCode = completedEnrollment.backupCodes[0];
+      const secondLogin = await authn.login({
+        subjectType: "internal",
+        loginIdentifier,
+        password: "S3cure-password!",
+      });
+
+      if (secondLogin.kind !== "mfa_challenge") {
+        throw new Error("Expected MFA challenge result.");
+      }
+
+      const firstVerification = await authn.verifyMfaChallenge({
+        challengeToken: secondLogin.challengeToken,
+        backupCode,
+        now,
+      });
+      createdSessionIds.push(firstVerification.session.sessionId);
+      expect(firstVerification.session.assuranceLevel).toBe("mfa_verified");
+
+      const thirdLogin = await authn.login({
+        subjectType: "internal",
+        loginIdentifier,
+        password: "S3cure-password!",
+      });
+
+      if (thirdLogin.kind !== "mfa_challenge") {
+        throw new Error("Expected MFA challenge result.");
+      }
+
+      await expect(
+        authn.verifyMfaChallenge({
+          challengeToken: thirdLogin.challengeToken,
+          backupCode,
+          now,
+        }),
+      ).rejects.toMatchObject({
+        code: "invalid_backup_code",
+      });
+    },
+    AUTHN_INTEGRATION_TIMEOUT_MS,
+  );
+
+  it(
+    "upgrades an authenticated session to step_up_verified and rejects stale assurance",
+    async () => {
+      const loginIdentifier = `support+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!", "platform_admin");
+
+      const login = await authn.login({
+        subjectType: "internal",
+        loginIdentifier,
+        password: "S3cure-password!",
+      });
+
+      if (login.kind !== "mfa_challenge") {
+        throw new Error("Expected MFA challenge result.");
+      }
+
+      const enrollment = await authn.startMfaEnrollment({
+        challengeToken: login.challengeToken,
+        accountName: loginIdentifier,
+      });
+      const verificationTime = new Date("2026-04-21T12:00:00.000Z");
+      const totp = new OTPAuth.TOTP({
+        issuer: "Vision",
+        label: loginIdentifier,
+        algorithm: "SHA1",
+        digits: 6,
+        period: 30,
+        secret: OTPAuth.Secret.fromBase32(enrollment.manualEntryKey),
+      });
+      const enrollmentCode = totp.generate({ timestamp: verificationTime.getTime() });
+      const completedEnrollment = await authn.verifyMfaEnrollment({
+        challengeToken: login.challengeToken,
+        code: enrollmentCode,
+        now: verificationTime,
+      });
+      createdSessionIds.push(completedEnrollment.session.sessionId);
+
+      const stepUp = await authn.startStepUpChallenge({
+        token: completedEnrollment.sessionToken,
+        reason: "support_grant_activation",
+      });
+      const stepUpCode = totp.generate({ timestamp: verificationTime.getTime() });
+      const steppedUp = await authn.verifyStepUpChallenge({
+        token: completedEnrollment.sessionToken,
+        challengeToken: stepUp.challengeToken,
+        totpCode: stepUpCode,
+        now: verificationTime,
+      });
+
+      expect(steppedUp.session.assuranceLevel).toBe("step_up_verified");
+
+      await expect(
+        authn.requireAssurance({
+          token: steppedUp.sessionToken,
+          requiredAssurance: "step_up_verified",
+          reason: "support_grant_activation",
+          now: new Date("2026-04-21T12:20:00.000Z"),
+          maxAgeMs: 5 * 60 * 1000,
+        }),
+      ).rejects.toMatchObject({
+        code: "insufficient_assurance",
+        context: {
+          denialReason: "step_up_stale",
+        },
+      });
     },
     AUTHN_INTEGRATION_TIMEOUT_MS,
   );
