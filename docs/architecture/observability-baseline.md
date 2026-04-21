@@ -45,6 +45,8 @@ Reserved optional fields for later phases include:
 - `subject`
 - `tenant`
 - `branch`
+- `service`
+- `environment`
 
 ## Explicit Non-Goals
 
