@@ -13,5 +13,5 @@ export {
   type DatabaseRuntimeConfig,
 } from "./config";
 export { checkDatabaseHealth } from "./health";
-export { appMetadata } from "./schema";
+export { appMetadata, authAccountEvents, authSessions, authSubjects } from "./schema";
 export { withDatabaseTransaction } from "./transactions";

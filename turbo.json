@@ -17,6 +17,7 @@
       "outputs": []
     },
     "test": {
+      "env": ["APP_ENV", "DATABASE_URL"],
       "outputs": ["coverage/**"]
     },
     "format": {

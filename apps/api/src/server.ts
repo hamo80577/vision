@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 
+import type { AuthnService } from "@vision/authn";
 import {
   createLogger,
   createNoopTracer,
@@ -10,6 +11,7 @@ import {
 } from "@vision/observability";
 
 import "./fastify-types";
+import { authPlugin } from "./auth-plugin";
 import { mapApiErrorToProblem } from "./http-errors";
 import { createApiRequestContext } from "./request-context";
 import { getApiRuntimeConfig, type ApiRuntimeConfig } from "./runtime";
@@ -18,6 +20,7 @@ export type ApiBuildDependencies = {
   runtime: ApiRuntimeConfig;
   logger: VisionLogger;
   tracer: ObservabilityTracer;
+  authService: AuthnService;
 };
 
 const REQUEST_ID_HEADER = "x-request-id";
@@ -330,6 +333,11 @@ export function buildApi(
     service: runtime.serviceName,
     status: "ok"
   }));
+
+  api.register(authPlugin, {
+    runtime,
+    authService: overrides.authService
+  });
 
   return api;
 }

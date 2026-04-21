@@ -9,6 +9,8 @@ describe("buildApi", () => {
     appEnv: "test",
     host: "127.0.0.1",
     port: 4000,
+    databaseUrl:
+      "postgresql://vision_local:vision_local_password@localhost:5432/vision_local",
     logLevel: "debug",
     serviceName: "vision-api"
   } as const;

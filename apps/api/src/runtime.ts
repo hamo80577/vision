@@ -5,6 +5,7 @@ export type ApiRuntimeConfig = {
   appEnv: AppEnvironment;
   host: string;
   port: number;
+  databaseUrl: string;
   logLevel: LogLevel;
   serviceName: "vision-api";
 };
@@ -20,6 +21,7 @@ export function getApiRuntimeConfig(
     appEnv: config.appEnv,
     host: config.host,
     port: config.port,
+    databaseUrl: config.databaseUrl,
     logLevel: config.logLevel,
     serviceName: "vision-api"
   };
