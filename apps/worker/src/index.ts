@@ -1,7 +1,19 @@
-import { parseWorkerConfig } from "@vision/config";
+import { createLogger } from "@vision/observability";
 
-import { getWorkerStatus } from "./status";
+import { createWorkerOperationContext } from "./context";
+import { logWorkerIdle, logWorkerStartup } from "./logging";
+import { getWorkerRuntimeConfig } from "./runtime";
 
-const config = parseWorkerConfig(process.env);
+const runtime = getWorkerRuntimeConfig();
+const logger = createLogger({
+  service: runtime.serviceName,
+  environment: runtime.appEnv,
+  level: runtime.logLevel
+});
+const startupContext = createWorkerOperationContext(runtime);
+const idleContext = createWorkerOperationContext(runtime, {
+  correlationId: startupContext.correlationId
+});
 
-console.log(JSON.stringify(getWorkerStatus(config.appEnv)));
+logWorkerStartup(logger, startupContext, runtime);
+logWorkerIdle(logger, idleContext, runtime.appEnv);

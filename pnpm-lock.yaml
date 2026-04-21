@@ -113,6 +113,9 @@ importers:
       '@vision/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@vision/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
 
   packages/authn: {}
 
