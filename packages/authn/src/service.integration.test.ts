@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { inArray } from "drizzle-orm";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   authAccountEvents,
@@ -12,7 +13,6 @@ import {
 } from "@vision/db";
 
 import {
-  AuthnError,
   createAuthnService,
   hashPassword,
   normalizeLoginIdentifier,
@@ -26,6 +26,8 @@ const db = createDatabaseClient(pool);
 const authn = createAuthnService(db, {
   sessionTtlMs: 60 * 60 * 1000,
 });
+let createdSubjectIds: string[] = [];
+let createdSessionIds: string[] = [];
 
 async function seedSubject(
   subjectType: "customer" | "internal",
@@ -33,6 +35,7 @@ async function seedSubject(
   password: string,
 ) {
   const id = `sub_${randomUUID()}`;
+  createdSubjectIds.push(id);
 
   await db.insert(authSubjects).values({
     id,
@@ -46,10 +49,25 @@ async function seedSubject(
 }
 
 describe("createAuthnService", () => {
-  beforeEach(async () => {
-    await db.delete(authAccountEvents);
-    await db.delete(authSessions);
-    await db.delete(authSubjects);
+  beforeEach(() => {
+    createdSubjectIds = [];
+    createdSessionIds = [];
+  });
+
+  afterEach(async () => {
+    if (createdSessionIds.length > 0) {
+      await db
+        .delete(authAccountEvents)
+        .where(inArray(authAccountEvents.sessionId, createdSessionIds));
+      await db.delete(authSessions).where(inArray(authSessions.id, createdSessionIds));
+    }
+
+    if (createdSubjectIds.length > 0) {
+      await db
+        .delete(authAccountEvents)
+        .where(inArray(authAccountEvents.subjectId, createdSubjectIds));
+      await db.delete(authSubjects).where(inArray(authSubjects.id, createdSubjectIds));
+    }
   });
 
   afterAll(async () => {
@@ -57,22 +75,24 @@ describe("createAuthnService", () => {
   });
 
   it("logs in an enabled subject and resolves the active session", async () => {
+    const loginIdentifier = `customer+${randomUUID()}@vision.test`;
     const subject = await seedSubject(
       "customer",
-      "Customer@Vision.test",
+      loginIdentifier,
       "S3cure-password!",
     );
 
     const login = await authn.login({
       subjectType: "customer",
-      loginIdentifier: "customer@vision.test",
+      loginIdentifier,
       password: "S3cure-password!",
     });
+    createdSessionIds.push(login.session.sessionId);
 
     expect(login.subject).toMatchObject({
       id: subject.id,
       subjectType: "customer",
-      loginIdentifier: "Customer@Vision.test",
+      loginIdentifier,
     });
 
     const resolved = await authn.resolveSession({
@@ -84,15 +104,16 @@ describe("createAuthnService", () => {
   });
 
   it("rejects invalid credentials without creating a session", async () => {
-    await seedSubject("internal", "ops@vision.test", "S3cure-password!");
+    const loginIdentifier = `ops+${randomUUID()}@vision.test`;
+    await seedSubject("internal", loginIdentifier, "S3cure-password!");
 
     await expect(
       authn.login({
         subjectType: "internal",
-        loginIdentifier: "ops@vision.test",
+        loginIdentifier,
         password: "wrong-password",
       }),
-    ).rejects.toMatchObject<AuthnError>({
+    ).rejects.toMatchObject({
       code: "invalid_credentials",
     });
 

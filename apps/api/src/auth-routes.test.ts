@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import { eq } from "drizzle-orm";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { inArray } from "drizzle-orm";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   createAuthnService,
@@ -38,6 +39,8 @@ const db = createDatabaseClient(pool);
 const authn = createAuthnService(db, {
   sessionTtlMs: 60 * 60 * 1000,
 });
+let createdSubjectIds: string[] = [];
+let createdSessionIds: string[] = [];
 
 function getAuthCookie(setCookie: string | string[] | undefined): string {
   const raw = Array.isArray(setCookie) ? setCookie[0] : setCookie;
@@ -54,8 +57,11 @@ async function seedSubject(
   loginIdentifier: string,
   password: string,
 ) {
+  const id = `sub_${randomUUID()}`;
+  createdSubjectIds.push(id);
+
   await db.insert(authSubjects).values({
-    id: `sub_${randomUUID()}`,
+    id,
     subjectType,
     loginIdentifier,
     normalizedLoginIdentifier: normalizeLoginIdentifier(loginIdentifier),
@@ -64,10 +70,25 @@ async function seedSubject(
 }
 
 describe("auth routes", () => {
-  beforeEach(async () => {
-    await db.delete(authAccountEvents);
-    await db.delete(authSessions);
-    await db.delete(authSubjects);
+  beforeEach(() => {
+    createdSubjectIds = [];
+    createdSessionIds = [];
+  });
+
+  afterEach(async () => {
+    if (createdSessionIds.length > 0) {
+      await db
+        .delete(authAccountEvents)
+        .where(inArray(authAccountEvents.sessionId, createdSessionIds));
+      await db.delete(authSessions).where(inArray(authSessions.id, createdSessionIds));
+    }
+
+    if (createdSubjectIds.length > 0) {
+      await db
+        .delete(authAccountEvents)
+        .where(inArray(authAccountEvents.subjectId, createdSubjectIds));
+      await db.delete(authSubjects).where(inArray(authSubjects.id, createdSubjectIds));
+    }
   });
 
   afterAll(async () => {
@@ -76,16 +97,18 @@ describe("auth routes", () => {
 
   it("logs in a customer and resolves the current session", async () => {
     const api = buildApi({ runtime, authService: authn });
-    await seedSubject("customer", "customer@vision.test", "S3cure-password!");
+    const loginIdentifier = `customer+${randomUUID()}@vision.test`;
+    await seedSubject("customer", loginIdentifier, "S3cure-password!");
 
     const login = await api.inject({
       method: "POST",
       url: "/auth/customer/login",
       payload: {
-        loginIdentifier: "customer@vision.test",
+        loginIdentifier,
         password: "S3cure-password!",
       },
     });
+    createdSessionIds.push((login.json() as { session: { sessionId: string } }).session.sessionId);
 
     expect(login.statusCode).toBe(200);
     expect(login.headers["set-cookie"]).toEqual(expect.any(String));
@@ -106,7 +129,7 @@ describe("auth routes", () => {
     expect(session.json()).toMatchObject({
       subject: {
         subjectType: "customer",
-        loginIdentifier: "customer@vision.test",
+        loginIdentifier,
       },
     });
 
@@ -115,16 +138,18 @@ describe("auth routes", () => {
 
   it("logs in an internal subject and resolves the current session", async () => {
     const api = buildApi({ runtime, authService: authn });
-    await seedSubject("internal", "ops@vision.test", "S3cure-password!");
+    const loginIdentifier = `ops+${randomUUID()}@vision.test`;
+    await seedSubject("internal", loginIdentifier, "S3cure-password!");
 
     const login = await api.inject({
       method: "POST",
       url: "/auth/internal/login",
       payload: {
-        loginIdentifier: "ops@vision.test",
+        loginIdentifier,
         password: "S3cure-password!",
       },
     });
+    createdSessionIds.push((login.json() as { session: { sessionId: string } }).session.sessionId);
 
     const session = await api.inject({
       method: "GET",
@@ -146,18 +171,20 @@ describe("auth routes", () => {
 
   it("rejects expired sessions", async () => {
     const api = buildApi({ runtime, authService: authn });
-    await seedSubject("customer", "expired@vision.test", "S3cure-password!");
+    const loginIdentifier = `expired+${randomUUID()}@vision.test`;
+    await seedSubject("customer", loginIdentifier, "S3cure-password!");
 
     const login = await api.inject({
       method: "POST",
       url: "/auth/customer/login",
       payload: {
-        loginIdentifier: "expired@vision.test",
+        loginIdentifier,
         password: "S3cure-password!",
       },
     });
     const cookie = getAuthCookie(login.headers["set-cookie"]);
     const sessionId = cookie.replace(`${AUTH_SESSION_COOKIE_NAME}=`, "").split(".")[0];
+    createdSessionIds.push(sessionId);
 
     await db
       .update(authSessions)
@@ -181,18 +208,21 @@ describe("auth routes", () => {
 
   it("rejects revoked sessions and clears the cookie", async () => {
     const api = buildApi({ runtime, authService: authn });
-    await seedSubject("internal", "revoked@vision.test", "S3cure-password!");
+    const loginIdentifier = `revoked+${randomUUID()}@vision.test`;
+    await seedSubject("internal", loginIdentifier, "S3cure-password!");
 
     const login = await api.inject({
       method: "POST",
       url: "/auth/internal/login",
       payload: {
-        loginIdentifier: "revoked@vision.test",
+        loginIdentifier,
         password: "S3cure-password!",
       },
     });
 
     const cookie = getAuthCookie(login.headers["set-cookie"]);
+    const sessionId = cookie.replace(`${AUTH_SESSION_COOKIE_NAME}=`, "").split(".")[0];
+    createdSessionIds.push(sessionId);
     await authn.logout({
       token: cookie.replace(`${AUTH_SESSION_COOKIE_NAME}=`, ""),
     });
@@ -212,18 +242,20 @@ describe("auth routes", () => {
 
   it("revokes the current session on logout and prevents reuse", async () => {
     const api = buildApi({ runtime, authService: authn });
-    await seedSubject("customer", "logout@vision.test", "S3cure-password!");
+    const loginIdentifier = `logout+${randomUUID()}@vision.test`;
+    await seedSubject("customer", loginIdentifier, "S3cure-password!");
 
     const login = await api.inject({
       method: "POST",
       url: "/auth/customer/login",
       payload: {
-        loginIdentifier: "logout@vision.test",
+        loginIdentifier,
         password: "S3cure-password!",
       },
     });
 
     const cookie = getAuthCookie(login.headers["set-cookie"]);
+    createdSessionIds.push(cookie.replace(`${AUTH_SESSION_COOKIE_NAME}=`, "").split(".")[0]);
     const logout = await api.inject({
       method: "POST",
       url: "/auth/logout",
@@ -250,18 +282,22 @@ describe("auth routes", () => {
 
   it("invalidates the previous token after rotation", async () => {
     const api = buildApi({ runtime, authService: authn });
-    await seedSubject("internal", "rotate@vision.test", "S3cure-password!");
+    const loginIdentifier = `rotate+${randomUUID()}@vision.test`;
+    await seedSubject("internal", loginIdentifier, "S3cure-password!");
 
     const login = await api.inject({
       method: "POST",
       url: "/auth/internal/login",
       payload: {
-        loginIdentifier: "rotate@vision.test",
+        loginIdentifier,
         password: "S3cure-password!",
       },
     });
 
     const originalCookie = getAuthCookie(login.headers["set-cookie"]);
+    createdSessionIds.push(
+      originalCookie.replace(`${AUTH_SESSION_COOKIE_NAME}=`, "").split(".")[0],
+    );
     const rotated = await authn.rotateSession({
       token: originalCookie.replace(`${AUTH_SESSION_COOKIE_NAME}=`, ""),
     });
