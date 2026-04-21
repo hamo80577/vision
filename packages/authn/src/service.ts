@@ -130,7 +130,8 @@ export function createAuthnService(
       | "backup_codes_regenerated"
       | "step_up_started"
       | "step_up_verified"
-      | "assurance_denied";
+      | "assurance_denied"
+      | "branch_context_switched";
     subjectId?: string | null;
     sessionId?: string | null;
     loginIdentifier?: string | null;
@@ -821,6 +822,46 @@ export function createAuthnService(
         sessionId: resolution.session.sessionId,
         loginIdentifier: resolution.subject.loginIdentifier,
       });
+    },
+
+    async switchActiveBranchContext(input: {
+      token: string;
+      activeTenantId: string;
+      nextBranchId: string;
+    }) {
+      const resolution = await this.resolveSession({ token: input.token });
+
+      if (resolution.subject.subjectType !== "internal") {
+        throw new AuthnError("invalid_session_token");
+      }
+
+      if (resolution.session.activeTenantId !== input.activeTenantId) {
+        throw new AuthnError("invalid_session_token");
+      }
+
+      const previousBranchId = resolution.session.activeBranchId;
+
+      await db
+        .update(authSessions)
+        .set({
+          activeBranchId: input.nextBranchId,
+          updatedAt: now(),
+        })
+        .where(eq(authSessions.id, resolution.session.sessionId));
+
+      await writeEvent({
+        subjectType: resolution.subject.subjectType,
+        eventType: "branch_context_switched",
+        subjectId: resolution.subject.id,
+        sessionId: resolution.session.sessionId,
+        detail: JSON.stringify({
+          tenantId: input.activeTenantId,
+          previousBranchId,
+          nextBranchId: input.nextBranchId,
+        }),
+      });
+
+      return loadResolution(resolution.session.sessionId);
     },
 
     async rotateSession(input: { token: string }) {

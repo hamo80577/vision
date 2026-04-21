@@ -55,6 +55,7 @@ export const authAccountEventType = pgEnum("auth_account_event_type", [
   "step_up_started",
   "step_up_verified",
   "assurance_denied",
+  "branch_context_switched",
 ]);
 
 export const authSubjects = pgTable(
