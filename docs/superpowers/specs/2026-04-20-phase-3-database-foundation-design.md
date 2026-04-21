@@ -142,9 +142,10 @@ This phase will establish the connection boundary that later hardening phases wi
 The design should distinguish:
 
 - `DATABASE_URL` for runtime application access
-- `DATABASE_ADMIN_URL` for migrations, reset, and other admin-only tooling
+- `DATABASE_ADMIN_URL` for admin-only operations against the maintenance database
+- `DATABASE_ADMIN_TARGET_DB` for the application database name that reset tooling will drop and recreate
 
-In local development both URLs may use the same PostgreSQL role for practicality, but they must remain separate configuration concepts now so the runtime/admin split is already visible in code and docs.
+In local development the runtime and admin connections may use the same PostgreSQL role for practicality, but they must remain separate configuration concepts now so the runtime/admin split is already visible in code and docs.
 
 The runtime application path must not assume superuser or schema-owner privileges. Later phases will harden that separation.
 
@@ -155,9 +156,9 @@ The repository already uses Docker Compose with local PostgreSQL. Phase 3 will a
 The reset flow will:
 
 1. connect through the admin database URL
-2. connect to the PostgreSQL maintenance database and drop/recreate the local application database in local or test environments
-3. apply all forward migrations
-4. run the seed script
+2. connect to the PostgreSQL maintenance database and drop/recreate the target application database in local or test environments
+3. apply all forward migrations through the runtime database URL
+4. run the seed script through the runtime database URL
 
 The seed data must stay infrastructure-only. It will insert a small set of deterministic rows into `app_metadata` to prove the seed mechanism without pretending to be tenant provisioning or business seed data.
 
