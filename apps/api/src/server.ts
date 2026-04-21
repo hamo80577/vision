@@ -254,6 +254,7 @@ export function buildApi(
   api.decorateRequest("observabilityContext", null);
   api.decorateRequest("requestLogger", null);
   api.decorateRequest("requestStartedAt", null);
+  api.decorateRequest("tenancy", null);
 
   api.addHook("onRequest", async (request, reply) => {
     request.requestStartedAt = Date.now();
