@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@vision/config": "workspace:*",
+    "@vision/observability": "workspace:*",
     "fastify": "latest"
   }
 }

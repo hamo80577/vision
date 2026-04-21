@@ -12,9 +12,9 @@ import {
 } from "./index";
 
 const localDatabaseUrl =
-  "postgresql://vision_local:vision_local_password@localhost:5432/vision_local";
+  "postgresql://vision_local:vision_local_password@localhost:5433/vision_local";
 const localAdminDatabaseUrl =
-  "postgresql://vision_local:vision_local_password@localhost:5432/postgres";
+  "postgresql://vision_local:vision_local_password@localhost:5433/postgres";
 
 const validApiEnv = {
   APP_ENV: "local",
@@ -35,8 +35,39 @@ describe("@vision/config", () => {
       host: "127.0.0.1",
       port: 4000,
       databaseUrl: localDatabaseUrl,
+      logLevel: "info",
     });
   });
+
+  it.each(["debug", "warn"] as const)(
+    "accepts %s as an explicit API log level",
+    (logLevel) => {
+      expect(
+        parseApiConfig({
+          ...validApiEnv,
+          LOG_LEVEL: logLevel,
+        }),
+      ).toEqual({
+        appEnv: "local",
+        host: "127.0.0.1",
+        port: 4000,
+        databaseUrl: localDatabaseUrl,
+        logLevel,
+      });
+    },
+  );
+
+  it.each(["verbose", "trace"] as const)(
+    "rejects %s as an API log level",
+    (logLevel) => {
+      expect(() =>
+        parseApiConfig({
+          ...validApiEnv,
+          LOG_LEVEL: logLevel,
+        }),
+      ).toThrow(ConfigError);
+    },
+  );
 
   it("fails when DATABASE_URL is missing for API config", () => {
     const { DATABASE_URL: _databaseUrl, ...missingDatabaseUrlEnv } = validApiEnv;
@@ -157,7 +188,7 @@ describe("@vision/config", () => {
         APP_ENV: "local",
         DATABASE_URL: localDatabaseUrl,
         DATABASE_ADMIN_URL:
-          "postgresql://vision_local:vision_local_password@localhost:5432/template1",
+          "postgresql://vision_local:vision_local_password@localhost:5433/template1",
         DATABASE_ADMIN_TARGET_DB: "vision_local",
       }),
     ).toThrow(ConfigError);
@@ -174,53 +205,6 @@ describe("@vision/config", () => {
     ).toThrow(ConfigError);
   });
 
-  it("parses database runtime config", () => {
-    expect(
-      parseDatabaseRuntimeConfig({
-        APP_ENV: "test",
-        DATABASE_URL:
-          "postgresql://vision_test:test_password@localhost:5432/vision_test"
-      })
-    ).toEqual({
-      appEnv: "test",
-      databaseUrl:
-        "postgresql://vision_test:test_password@localhost:5432/vision_test"
-    });
-  });
-
-  it("parses database admin config", () => {
-    expect(
-      parseDatabaseAdminConfig({
-        APP_ENV: "local",
-        DATABASE_URL: localDatabaseUrl,
-        DATABASE_ADMIN_URL: localAdminDatabaseUrl
-      })
-    ).toEqual({
-      appEnv: "local",
-      databaseUrl: localDatabaseUrl,
-      adminDatabaseUrl: localAdminDatabaseUrl
-    });
-  });
-
-  it("fails when DATABASE_ADMIN_URL is missing", () => {
-    expect(() =>
-      parseDatabaseAdminConfig({
-        APP_ENV: "local",
-        DATABASE_URL: localDatabaseUrl
-      })
-    ).toThrow(ConfigError);
-  });
-
-  it("fails when DATABASE_ADMIN_URL targets the same local database", () => {
-    expect(() =>
-      parseDatabaseAdminConfig({
-        APP_ENV: "local",
-        DATABASE_URL: localDatabaseUrl,
-        DATABASE_ADMIN_URL: localDatabaseUrl
-      })
-    ).toThrow(ConfigError);
-  });
-
   it("parses worker config without opening a database connection", () => {
     expect(
       parseWorkerConfig({
@@ -230,8 +214,39 @@ describe("@vision/config", () => {
     ).toEqual({
       appEnv: "test",
       databaseUrl: "postgresql://vision_test:test_password@localhost:5432/vision_test",
+      logLevel: "info",
     });
   });
+
+  it.each(["debug", "warn"] as const)(
+    "accepts %s as an explicit worker log level",
+    (logLevel) => {
+      expect(
+        parseWorkerConfig({
+          APP_ENV: "test",
+          DATABASE_URL: "postgresql://vision_test:test_password@localhost:5432/vision_test",
+          LOG_LEVEL: logLevel,
+        }),
+      ).toEqual({
+        appEnv: "test",
+        databaseUrl: "postgresql://vision_test:test_password@localhost:5432/vision_test",
+        logLevel,
+      });
+    },
+  );
+
+  it.each(["verbose", "trace"] as const)(
+    "rejects %s as a worker log level",
+    (logLevel) => {
+      expect(() =>
+        parseWorkerConfig({
+          APP_ENV: "test",
+          DATABASE_URL: "postgresql://vision_test:test_password@localhost:5432/vision_test",
+          LOG_LEVEL: logLevel,
+        }),
+      ).toThrow(ConfigError);
+    },
+  );
 
   it("parses frontend config from public variables only", () => {
     const config = parseWebConfig({

@@ -18,6 +18,18 @@ Copy-Item .env.example .env
 
 Real `.env` files are ignored by Git. Keep local values local.
 
+The tracked example includes the default structured log level used by API and worker processes:
+
+```text
+LOG_LEVEL=info
+```
+
+Override it locally when you need more or less detail, for example:
+
+```text
+LOG_LEVEL=debug
+```
+
 ## PostgreSQL
 
 The Docker service maps container port `5432` to host port `5433` so it can run beside a native PostgreSQL install that already owns `5432`.

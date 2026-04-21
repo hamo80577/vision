@@ -1,13 +1,14 @@
 import { z } from "zod";
 
 const localDatabaseUrl =
-  "postgresql://vision_local:vision_local_password@localhost:5432/vision_local";
+  "postgresql://vision_local:vision_local_password@localhost:5433/vision_local";
 const localDatabaseAdminUrl =
-  "postgresql://vision_local:vision_local_password@localhost:5432/postgres";
+  "postgresql://vision_local:vision_local_password@localhost:5433/postgres";
 const localDatabaseUser = "vision_local";
 const localDatabasePassword = "vision_local_password";
 
 const appEnvironmentSchema = z.enum(["local", "test", "staging", "production"]);
+const logLevelSchema = z.enum(["debug", "info", "warn", "error"]);
 
 const portSchema = z.coerce.number().int().min(1).max(65535);
 const urlSchema = z.string().url();
@@ -37,11 +38,13 @@ const apiEnvSchema = z.object({
   API_HOST: z.string().min(1),
   API_PORT: portSchema,
   DATABASE_URL: databaseUrlSchema,
+  LOG_LEVEL: logLevelSchema.default("info"),
 });
 
 const workerEnvSchema = z.object({
   APP_ENV: appEnvironmentSchema,
   DATABASE_URL: databaseUrlSchema,
+  LOG_LEVEL: logLevelSchema.default("info"),
 });
 
 const frontendEnvSchema = z.object({
@@ -50,6 +53,7 @@ const frontendEnvSchema = z.object({
 });
 
 export type AppEnvironment = z.infer<typeof appEnvironmentSchema>;
+export type LogLevel = z.infer<typeof logLevelSchema>;
 
 export type RuntimeEnv = Record<string, string | undefined>;
 
@@ -58,11 +62,13 @@ export type ApiConfig = {
   host: string;
   port: number;
   databaseUrl: string;
+  logLevel: LogLevel;
 };
 
 export type WorkerConfig = {
   appEnv: AppEnvironment;
   databaseUrl: string;
+  logLevel: LogLevel;
 };
 
 export type DatabaseRuntimeConfig = {
@@ -203,6 +209,7 @@ export function parseApiConfig(env: RuntimeEnv): ApiConfig {
     host: parsed.API_HOST,
     port: parsed.API_PORT,
     databaseUrl: parsed.DATABASE_URL,
+    logLevel: parsed.LOG_LEVEL,
   };
 }
 
@@ -214,6 +221,7 @@ export function parseWorkerConfig(env: RuntimeEnv): WorkerConfig {
   return {
     appEnv: parsed.APP_ENV,
     databaseUrl: parsed.DATABASE_URL,
+    logLevel: parsed.LOG_LEVEL,
   };
 }
 
