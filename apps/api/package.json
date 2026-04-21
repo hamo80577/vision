@@ -18,5 +18,8 @@
     "@vision/observability": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "fastify": "latest"
+  },
+  "devDependencies": {
+    "otpauth": "^9.4.1"
   }
 }

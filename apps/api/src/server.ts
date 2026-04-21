@@ -6,6 +6,7 @@ import {
   createNoopTracer,
   extendObservabilityContext,
   sanitizeProblemInstance,
+  serializeErrorForLog,
   type ObservabilityTracer,
   type VisionLogger
 } from "@vision/observability";
@@ -316,7 +317,7 @@ export function buildApi(
       route: sanitizeProblemInstance(request.routeOptions.url ?? request.url),
       statusCode,
       problem,
-      error
+      error: serializeErrorForLog(error)
     });
 
     reply

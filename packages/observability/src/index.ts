@@ -32,8 +32,10 @@ export {
   createProblemDetails,
   sanitizeProblemInstance,
   type ProblemCode,
+  type ProblemDenialReason,
   type ProblemDetails,
   type ProblemDetailsInput,
+  type ProblemRequiredAssurance,
   type ProblemValidationIssue
 } from "./problem-details";
 export {

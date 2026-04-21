@@ -21,6 +21,8 @@ const validApiEnv = {
   API_HOST: "127.0.0.1",
   API_PORT: "4000",
   DATABASE_URL: localDatabaseUrl,
+  AUTH_MFA_ENCRYPTION_KEY: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+  AUTH_MFA_ENCRYPTION_KEY_VERSION: "v1",
 };
 
 const validFrontendEnv = {
@@ -35,6 +37,8 @@ describe("@vision/config", () => {
       host: "127.0.0.1",
       port: 4000,
       databaseUrl: localDatabaseUrl,
+      mfaEncryptionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+      mfaEncryptionKeyVersion: "v1",
       logLevel: "info",
     });
   });
@@ -52,6 +56,8 @@ describe("@vision/config", () => {
         host: "127.0.0.1",
         port: 4000,
         databaseUrl: localDatabaseUrl,
+        mfaEncryptionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+        mfaEncryptionKeyVersion: "v1",
         logLevel,
       });
     },
@@ -73,6 +79,24 @@ describe("@vision/config", () => {
     const { DATABASE_URL: _databaseUrl, ...missingDatabaseUrlEnv } = validApiEnv;
 
     expect(() => parseApiConfig(missingDatabaseUrlEnv)).toThrow(ConfigError);
+  });
+
+  it("fails when AUTH_MFA_ENCRYPTION_KEY is missing for API config", () => {
+    const {
+      AUTH_MFA_ENCRYPTION_KEY: _missingEncryptionKey,
+      ...missingEncryptionKeyEnv
+    } = validApiEnv;
+
+    expect(() => parseApiConfig(missingEncryptionKeyEnv)).toThrow(ConfigError);
+  });
+
+  it("fails when AUTH_MFA_ENCRYPTION_KEY is not a base64-encoded 32-byte key", () => {
+    expect(() =>
+      parseApiConfig({
+        ...validApiEnv,
+        AUTH_MFA_ENCRYPTION_KEY: "not-a-valid-key",
+      }),
+    ).toThrow(ConfigError);
   });
 
   it("fails when API_PORT is invalid", () => {

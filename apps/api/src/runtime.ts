@@ -6,6 +6,8 @@ export type ApiRuntimeConfig = {
   host: string;
   port: number;
   databaseUrl: string;
+  mfaEncryptionKey: string;
+  mfaEncryptionKeyVersion: string;
   logLevel: LogLevel;
   serviceName: "vision-api";
 };
@@ -22,6 +24,8 @@ export function getApiRuntimeConfig(
     host: config.host,
     port: config.port,
     databaseUrl: config.databaseUrl,
+    mfaEncryptionKey: config.mfaEncryptionKey,
+    mfaEncryptionKeyVersion: config.mfaEncryptionKeyVersion,
     logLevel: config.logLevel,
     serviceName: "vision-api"
   };

@@ -111,4 +111,20 @@ describe("problem-details", () => {
 
     expect(nonValidation.errors).toBeUndefined();
   });
+
+  it("includes assurance extensions for insufficient assurance problems", () => {
+    const value = createProblemDetails({
+      type: "https://vision.dev/problems/insufficient-assurance",
+      title: "Insufficient Assurance",
+      status: 403,
+      code: "insufficient_assurance",
+      detail: "Step-up verification is required.",
+      requiredAssurance: "step_up_verified",
+      denialReason: "step_up_required"
+    });
+
+    expect(value.requiredAssurance).toBe("step_up_verified");
+    expect(value.denialReason).toBe("step_up_required");
+    expect(value.errors).toBeUndefined();
+  });
 });

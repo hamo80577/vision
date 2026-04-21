@@ -12,6 +12,18 @@ const logLevelSchema = z.enum(["debug", "info", "warn", "error"]);
 
 const portSchema = z.coerce.number().int().min(1).max(65535);
 const urlSchema = z.string().url();
+const mfaEncryptionKeySchema = z.string().refine(
+  (value) => {
+    try {
+      return Buffer.from(value, "base64").length === 32;
+    } catch {
+      return false;
+    }
+  },
+  {
+    message: "must be a base64-encoded 32-byte key",
+  },
+);
 const databaseUrlSchema = urlSchema.refine(
   (value) => {
     const protocol = new URL(value).protocol;
@@ -38,6 +50,8 @@ const apiEnvSchema = z.object({
   API_HOST: z.string().min(1),
   API_PORT: portSchema,
   DATABASE_URL: databaseUrlSchema,
+  AUTH_MFA_ENCRYPTION_KEY: mfaEncryptionKeySchema,
+  AUTH_MFA_ENCRYPTION_KEY_VERSION: z.string().min(1),
   LOG_LEVEL: logLevelSchema.default("info"),
 });
 
@@ -62,6 +76,8 @@ export type ApiConfig = {
   host: string;
   port: number;
   databaseUrl: string;
+  mfaEncryptionKey: string;
+  mfaEncryptionKeyVersion: string;
   logLevel: LogLevel;
 };
 
@@ -209,6 +225,8 @@ export function parseApiConfig(env: RuntimeEnv): ApiConfig {
     host: parsed.API_HOST,
     port: parsed.API_PORT,
     databaseUrl: parsed.DATABASE_URL,
+    mfaEncryptionKey: parsed.AUTH_MFA_ENCRYPTION_KEY,
+    mfaEncryptionKeyVersion: parsed.AUTH_MFA_ENCRYPTION_KEY_VERSION,
     logLevel: parsed.LOG_LEVEL,
   };
 }

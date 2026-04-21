@@ -15,6 +15,7 @@
   "dependencies": {
     "@vision/db": "workspace:*",
     "argon2": "^0.44.0",
-    "drizzle-orm": "^0.45.2"
+    "drizzle-orm": "^0.45.2",
+    "otpauth": "^9.4.1"
   }
 }

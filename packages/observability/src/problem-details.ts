@@ -5,8 +5,19 @@ export type ProblemCode =
   | "validation_error"
   | "unauthenticated"
   | "forbidden"
+  | "insufficient_assurance"
   | "not_found"
   | "conflict";
+
+export type ProblemRequiredAssurance =
+  | "basic"
+  | "mfa_verified"
+  | "step_up_verified";
+
+export type ProblemDenialReason =
+  | "mfa_required"
+  | "step_up_required"
+  | "step_up_stale";
 
 export interface ProblemValidationIssue {
   path: string;
@@ -21,6 +32,8 @@ export interface ProblemDetails {
   code: ProblemCode;
   detail: string;
   instance: string;
+  requiredAssurance?: ProblemRequiredAssurance;
+  denialReason?: ProblemDenialReason;
   traceId?: string;
   errors?: ProblemValidationIssue[];
 }
@@ -78,6 +91,14 @@ export function createProblemDetails(input: ProblemDetailsInput): ProblemDetails
     detail: input.detail,
     instance: sanitizeProblemInstance(input.instance)
   };
+
+  if (input.requiredAssurance !== undefined) {
+    next.requiredAssurance = input.requiredAssurance;
+  }
+
+  if (input.denialReason !== undefined) {
+    next.denialReason = input.denialReason;
+  }
 
   const traceId = sanitizeObservabilityId(input.traceId);
   if (traceId !== undefined) {
