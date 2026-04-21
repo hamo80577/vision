@@ -4,13 +4,13 @@ export {
   TenancyError,
   isTenancyError,
   requireResolvedTenancyContext,
-} from "./errors";
-export { toDatabaseAccessContext } from "./db-context";
-export { resolveInternalTenancyContext } from "./resolve-internal-tenancy-context";
+} from "./errors.js";
+export { toDatabaseAccessContext } from "./db-context.js";
+export { resolveInternalTenancyContext } from "./resolve-internal-tenancy-context.js";
 export type {
   ActiveTenantAccessSnapshot,
   DatabaseAccessContext,
   RawRouteIntent,
   ResolvedTenancyContext,
   TenancyErrorCode,
-} from "./types";
+} from "./types.js";

@@ -1,9 +1,9 @@
-import { TenancyError } from "./errors";
+import { TenancyError } from "./errors.js";
 import type {
   ActiveTenantAccessSnapshot,
   RawRouteIntent,
   ResolvedTenancyContext,
-} from "./types";
+} from "./types.js";
 
 type InternalSessionTenancyState = {
   sessionId: string;

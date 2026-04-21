@@ -1,4 +1,4 @@
-import type { DatabaseAccessContext, ResolvedTenancyContext } from "./types";
+import type { DatabaseAccessContext, ResolvedTenancyContext } from "./types.js";
 
 export function toDatabaseAccessContext(
   context: ResolvedTenancyContext,

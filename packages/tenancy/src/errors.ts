@@ -1,4 +1,4 @@
-import type { ResolvedTenancyContext, TenancyErrorCode } from "./types";
+import type { ResolvedTenancyContext, TenancyErrorCode } from "./types.js";
 
 const TENANCY_ERROR_NAME = "TenancyError";
 

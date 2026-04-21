@@ -14,6 +14,10 @@ export {
 } from "./config";
 export { checkDatabaseHealth } from "./health";
 export {
+  applyDatabaseAccessContext,
+  withDatabaseAccessContext,
+} from "./access-context";
+export {
   appMetadata,
   authAccountEvents,
   authAssuranceChallenges,

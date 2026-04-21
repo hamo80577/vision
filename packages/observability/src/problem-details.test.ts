@@ -143,4 +143,17 @@ describe("problem-details", () => {
     expect(value).not.toHaveProperty("debug");
     expect(value.denialReason).toBeUndefined();
   });
+
+  it("supports tenancy denial codes without exposing internal metadata", () => {
+    const value = createProblemDetails({
+      type: "https://vision.dev/problems/forbidden",
+      title: "Forbidden",
+      status: 403,
+      code: "tenant_intent_mismatch",
+      detail: "Forbidden",
+    });
+
+    expect(value.code).toBe("tenant_intent_mismatch");
+    expect(value).not.toHaveProperty("debug");
+  });
 });
