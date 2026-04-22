@@ -1,13 +1,16 @@
-import { sql, type SQL } from "drizzle-orm";
+import { sql, type SQLWrapper } from "drizzle-orm";
 
 import { TenancyError, type DatabaseAccessContext } from "@vision/tenancy";
 
 type TransactionCapable<TTx> = {
-  transaction<TResult>(callback: (tx: TTx) => Promise<TResult>): Promise<TResult>;
+  transaction<TResult>(
+    callback: (tx: TTx) => Promise<TResult>,
+    config?: unknown,
+  ): Promise<TResult>;
 };
 
 type DatabaseContextCapable = {
-  execute<TResult = { rows: unknown[] }>(query: SQL): Promise<TResult>;
+  execute(query: SQLWrapper | string): PromiseLike<unknown>;
 };
 
 function validateDatabaseAccessContext(context: DatabaseAccessContext): void {

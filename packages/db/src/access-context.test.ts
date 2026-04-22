@@ -23,10 +23,10 @@ describe("withDatabaseAccessContext", () => {
           sessionId: "sess_1",
         },
         async (tx) => {
-          const tenantRows = await tx.execute(
+          const tenantRows = await tx.execute<{ tenant_id: string | null }>(
             sql`select current_setting('vision.tenant_id', true) as tenant_id`,
           );
-          const branchRows = await tx.execute(
+          const branchRows = await tx.execute<{ branch_id: string | null }>(
             sql`select current_setting('vision.branch_id', true) as branch_id`,
           );
 
@@ -55,7 +55,7 @@ describe("withDatabaseAccessContext", () => {
         withDatabaseAccessContext(
           db,
           {
-            tenantId: "" as unknown as string,
+            tenantId: "",
             branchId: null,
             subjectId: "sub_1",
             subjectType: "internal",
