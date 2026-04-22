@@ -13,8 +13,10 @@ Security decisions must preserve:
 
 Current implementation notes:
 
+- [Database Role Strategy](./database-role-strategy.md)
 - [Authorization Engine](./authorization-engine.md)
 - [Tenancy Execution Context](./tenancy-execution-context.md)
+- [Row Level Security](./row-level-security.md)
 - [MFA And Assurance](./mfa-and-assurance.md)
 - [Logging And Error Safety](./logging-and-error-safety.md)
 - [Secrets Strategy](./secrets-strategy.md)

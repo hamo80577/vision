@@ -1,11 +1,14 @@
 import { z } from "zod";
 
 const localDatabaseUrl =
-  "postgresql://vision_local:vision_local_password@localhost:5433/vision_local";
+  "postgresql://vision_runtime:vision_runtime_password@localhost:5433/vision_local";
 const localDatabaseAdminUrl =
-  "postgresql://vision_local:vision_local_password@localhost:5433/postgres";
-const localDatabaseUser = "vision_local";
-const localDatabasePassword = "vision_local_password";
+  "postgresql://vision_admin:vision_admin_password@localhost:5433/postgres";
+const localDatabaseUsers = ["vision_runtime", "vision_admin"];
+const localDatabasePasswords = [
+  "vision_runtime_password",
+  "vision_admin_password",
+];
 
 const appEnvironmentSchema = z.enum(["local", "test", "staging", "production"]);
 const logLevelSchema = z.enum(["debug", "info", "warn", "error"]);
@@ -34,6 +37,14 @@ const databaseUrlSchema = urlSchema.refine(
     message: "must use postgres or postgresql protocol",
   },
 );
+
+function getDatabaseUsername(databaseUrl: string): string {
+  return decodeURIComponent(new URL(databaseUrl).username);
+}
+
+function getDatabasePassword(databaseUrl: string): string {
+  return decodeURIComponent(new URL(databaseUrl).password);
+}
 
 const databaseRuntimeEnvSchema = z.object({
   APP_ENV: appEnvironmentSchema,
@@ -145,21 +156,48 @@ function getDatabaseName(databaseUrl: string): string {
   return databaseName;
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  const normalizedHostname = hostname.toLowerCase();
+
+  return (
+    normalizedHostname === "localhost" ||
+    normalizedHostname === "127.0.0.1" ||
+    normalizedHostname.startsWith("127.") ||
+    normalizedHostname === "::1" ||
+    normalizedHostname === "[::1]"
+  );
+}
+
+function getDatabasePort(databaseUrl: string): string {
+  const parsedUrl = new URL(databaseUrl);
+
+  return parsedUrl.port || "5432";
+}
+
+function assertDatabaseUrlHasCredentials(envName: string, databaseUrl: string): void {
+  const username = getDatabaseUsername(databaseUrl);
+  const password = getDatabasePassword(databaseUrl);
+
+  if (!username || !password) {
+    throw new ConfigError([`${envName} must include a database role username and password`]);
+  }
+}
+
 function assertSafeDatabaseUrl(appEnv: AppEnvironment, databaseUrl: string): void {
   if (appEnv !== "staging" && appEnv !== "production") {
     return;
   }
 
   const parsedUrl = new URL(databaseUrl);
-  const username = decodeURIComponent(parsedUrl.username);
-  const password = decodeURIComponent(parsedUrl.password);
+  const username = getDatabaseUsername(databaseUrl);
+  const password = getDatabasePassword(databaseUrl);
   const databaseName = getDatabaseName(databaseUrl);
   const usesLocalDefaults =
     databaseUrl === localDatabaseUrl ||
     databaseUrl === localDatabaseAdminUrl ||
-    username === localDatabaseUser ||
-    password === localDatabasePassword ||
-    (parsedUrl.hostname === "localhost" && databaseName === "vision_local");
+    localDatabaseUsers.includes(username) ||
+    localDatabasePasswords.includes(password) ||
+    (isLoopbackHostname(parsedUrl.hostname) && databaseName === "vision_local");
 
   if (usesLocalDefaults) {
     throw new ConfigError([`${appEnv} DATABASE_URL must not use local database defaults`]);
@@ -173,6 +211,23 @@ function assertValidAdminDatabaseUrl(
   adminTargetDatabaseName: string,
 ): void {
   assertSafeDatabaseUrl(appEnv, adminDatabaseUrl);
+  assertDatabaseUrlHasCredentials("DATABASE_ADMIN_URL", adminDatabaseUrl);
+
+  const runtimeDatabaseUrl = new URL(databaseUrl);
+  const runtimeDatabasePort = getDatabasePort(databaseUrl);
+  const adminMaintenanceUrl = new URL(adminDatabaseUrl);
+  const adminMaintenancePort = getDatabasePort(adminDatabaseUrl);
+  const runtimeDatabaseUsername = getDatabaseUsername(databaseUrl);
+  const adminDatabaseUsername = getDatabaseUsername(adminDatabaseUrl);
+
+  if (
+    runtimeDatabaseUrl.hostname !== adminMaintenanceUrl.hostname ||
+    runtimeDatabasePort !== adminMaintenancePort
+  ) {
+    throw new ConfigError([
+      `${appEnv} DATABASE_ADMIN_URL must target the same database host and port as DATABASE_URL`,
+    ]);
+  }
 
   if (getDatabaseName(adminDatabaseUrl) !== "postgres") {
     throw new ConfigError([
@@ -183,11 +238,18 @@ function assertValidAdminDatabaseUrl(
   if (adminTargetDatabaseName !== getDatabaseName(databaseUrl)) {
     throw new ConfigError([`${appEnv} DATABASE_ADMIN_TARGET_DB must match DATABASE_URL`]);
   }
+
+  if (runtimeDatabaseUsername === adminDatabaseUsername) {
+    throw new ConfigError([
+      `${appEnv} DATABASE_ADMIN_URL must use a different database role than DATABASE_URL`,
+    ]);
+  }
 }
 
 export function parseDatabaseRuntimeConfig(env: RuntimeEnv): DatabaseRuntimeConfig {
   const parsed = parseEnv(databaseRuntimeEnvSchema, env);
 
+  assertDatabaseUrlHasCredentials("DATABASE_URL", parsed.DATABASE_URL);
   assertSafeDatabaseUrl(parsed.APP_ENV, parsed.DATABASE_URL);
 
   return {
@@ -199,6 +261,7 @@ export function parseDatabaseRuntimeConfig(env: RuntimeEnv): DatabaseRuntimeConf
 export function parseDatabaseAdminConfig(env: RuntimeEnv): DatabaseAdminConfig {
   const parsed = parseEnv(databaseAdminEnvSchema, env);
 
+  assertDatabaseUrlHasCredentials("DATABASE_URL", parsed.DATABASE_URL);
   assertSafeDatabaseUrl(parsed.APP_ENV, parsed.DATABASE_URL);
   assertValidAdminDatabaseUrl(
     parsed.APP_ENV,
@@ -218,6 +281,7 @@ export function parseDatabaseAdminConfig(env: RuntimeEnv): DatabaseAdminConfig {
 export function parseApiConfig(env: RuntimeEnv): ApiConfig {
   const parsed = parseEnv(apiEnvSchema, env);
 
+  assertDatabaseUrlHasCredentials("DATABASE_URL", parsed.DATABASE_URL);
   assertSafeDatabaseUrl(parsed.APP_ENV, parsed.DATABASE_URL);
 
   return {
@@ -234,6 +298,7 @@ export function parseApiConfig(env: RuntimeEnv): ApiConfig {
 export function parseWorkerConfig(env: RuntimeEnv): WorkerConfig {
   const parsed = parseEnv(workerEnvSchema, env);
 
+  assertDatabaseUrlHasCredentials("DATABASE_URL", parsed.DATABASE_URL);
   assertSafeDatabaseUrl(parsed.APP_ENV, parsed.DATABASE_URL);
 
   return {

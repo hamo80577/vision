@@ -19,6 +19,8 @@ import {
   closeDatabasePool,
   createDatabaseClient,
   createDatabasePool,
+  deriveAdminTargetDatabaseUrl,
+  getDatabaseAdminConfig,
   getDatabaseRuntimeConfig,
 } from "@vision/db";
 import type { ActiveTenantAccessSnapshot } from "@vision/tenancy";
@@ -30,22 +32,31 @@ const AUTH_ROUTE_TEST_TIMEOUT_MS = 20_000;
 const MFA_ENCRYPTION_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 const FIXED_TEST_TIME = new Date("2026-04-21T12:00:00.000Z");
 
-const { appEnv, databaseUrl } = getDatabaseRuntimeConfig(process.env);
+const runtimeConfig = getDatabaseRuntimeConfig(process.env);
+const adminConfig = getDatabaseAdminConfig(process.env);
 
 const runtime = {
-  appEnv,
+  appEnv: runtimeConfig.appEnv,
   host: "127.0.0.1",
   port: 4000,
-  databaseUrl,
+  databaseUrl: runtimeConfig.databaseUrl,
   mfaEncryptionKey: MFA_ENCRYPTION_KEY,
   mfaEncryptionKeyVersion: "v1",
   logLevel: "debug",
   serviceName: "vision-api",
 } as const;
 
-const pool = createDatabasePool(databaseUrl);
-const db = createDatabaseClient(pool);
-const authn = createAuthnService(db, {
+const runtimePool = createDatabasePool(runtimeConfig.databaseUrl);
+const runtimeDb = createDatabaseClient(runtimePool);
+
+const adminTargetDatabaseUrl = deriveAdminTargetDatabaseUrl(
+  adminConfig.adminDatabaseUrl,
+  adminConfig.adminTargetDatabaseName,
+);
+const adminPool = createDatabasePool(adminTargetDatabaseUrl);
+const adminDb = createDatabaseClient(adminPool);
+
+const authn = createAuthnService(runtimeDb, {
   now: () => new Date(FIXED_TEST_TIME),
   sessionTtlMs: 60 * 60 * 1000,
   mfaEncryptionKey: MFA_ENCRYPTION_KEY,
@@ -92,7 +103,7 @@ async function seedSubject(
   const id = `sub_${randomUUID()}`;
   createdSubjectIds.push(id);
 
-  await db.insert(authSubjects).values({
+  await adminDb.insert(authSubjects).values({
     id,
     subjectType,
     loginIdentifier,
@@ -110,22 +121,27 @@ describe("auth routes", () => {
 
   afterEach(async () => {
     if (createdSessionIds.length > 0) {
-      await db
+      await adminDb
         .delete(authAccountEvents)
         .where(inArray(authAccountEvents.sessionId, createdSessionIds));
-      await db.delete(authSessions).where(inArray(authSessions.id, createdSessionIds));
+      await adminDb
+        .delete(authSessions)
+        .where(inArray(authSessions.id, createdSessionIds));
     }
 
     if (createdSubjectIds.length > 0) {
-      await db
+      await adminDb
         .delete(authAccountEvents)
         .where(inArray(authAccountEvents.subjectId, createdSubjectIds));
-      await db.delete(authSubjects).where(inArray(authSubjects.id, createdSubjectIds));
+      await adminDb
+        .delete(authSubjects)
+        .where(inArray(authSubjects.id, createdSubjectIds));
     }
   });
 
   afterAll(async () => {
-    await closeDatabasePool(pool);
+    await closeDatabasePool(runtimePool);
+    await closeDatabasePool(adminPool);
   });
 
   it(
@@ -152,7 +168,7 @@ describe("auth routes", () => {
       const sessionId = cookie.replace(`${AUTH_SESSION_COOKIE_NAME}=`, "").split(".")[0] ?? "";
       createdSessionIds.push(sessionId);
 
-      await db
+      await adminDb
         .update(authSessions)
         .set({
           activeTenantId: "tenant_1",
@@ -185,7 +201,7 @@ describe("auth routes", () => {
         },
       });
 
-      const events = await db
+      const events = await adminDb
         .select()
         .from(authAccountEvents)
         .where(eq(authAccountEvents.sessionId, sessionId));
@@ -223,7 +239,7 @@ describe("auth routes", () => {
       const sessionId = cookie.replace(`${AUTH_SESSION_COOKIE_NAME}=`, "").split(".")[0] ?? "";
       createdSessionIds.push(sessionId);
 
-      await db
+      await adminDb
         .update(authSessions)
         .set({
           activeTenantId: "tenant_1",
@@ -256,7 +272,7 @@ describe("auth routes", () => {
         },
       });
 
-      const events = await db
+      const events = await adminDb
         .select()
         .from(authAccountEvents)
         .where(eq(authAccountEvents.sessionId, sessionId));
@@ -294,7 +310,7 @@ describe("auth routes", () => {
       const sessionId = cookie.replace(`${AUTH_SESSION_COOKIE_NAME}=`, "").split(".")[0] ?? "";
       createdSessionIds.push(sessionId);
 
-      await db
+      await adminDb
         .update(authSessions)
         .set({
           activeTenantId: "tenant_1",
@@ -318,7 +334,7 @@ describe("auth routes", () => {
         code: "branch_not_in_active_tenant_scope",
       });
 
-      const [session] = await db
+      const [session] = await runtimeDb
         .select()
         .from(authSessions)
         .where(eq(authSessions.id, sessionId));
@@ -431,7 +447,7 @@ describe("auth routes", () => {
       const sessionId = cookie.replace(`${AUTH_SESSION_COOKIE_NAME}=`, "").split(".")[0];
       createdSessionIds.push(sessionId);
 
-      await db
+      await adminDb
         .update(authSessions)
         .set({
           expiresAt: new Date("2026-01-01T00:00:00.000Z"),

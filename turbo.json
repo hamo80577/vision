@@ -17,7 +17,12 @@
       "outputs": []
     },
     "test": {
-      "env": ["APP_ENV", "DATABASE_URL"],
+      "env": [
+        "APP_ENV",
+        "DATABASE_URL",
+        "DATABASE_ADMIN_URL",
+        "DATABASE_ADMIN_TARGET_DB"
+      ],
       "outputs": ["coverage/**"]
     },
     "format": {

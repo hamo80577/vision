@@ -17,6 +17,8 @@ import {
   closeDatabasePool,
   createDatabaseClient,
   createDatabasePool,
+  deriveAdminTargetDatabaseUrl,
+  getDatabaseAdminConfig,
   getDatabaseRuntimeConfig
 } from "@vision/db";
 
@@ -30,22 +32,31 @@ import { buildApi } from "./server";
 const AUTHZ_GUARD_TEST_TIMEOUT_MS = 20_000;
 const MFA_ENCRYPTION_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 const FIXED_TEST_TIME = new Date("2026-04-21T12:00:00.000Z");
-const { appEnv, databaseUrl } = getDatabaseRuntimeConfig(process.env);
+const runtimeConfig = getDatabaseRuntimeConfig(process.env);
+const adminConfig = getDatabaseAdminConfig(process.env);
 
 const runtime = {
-  appEnv,
+  appEnv: runtimeConfig.appEnv,
   host: "127.0.0.1",
   port: 4000,
-  databaseUrl,
+  databaseUrl: runtimeConfig.databaseUrl,
   mfaEncryptionKey: MFA_ENCRYPTION_KEY,
   mfaEncryptionKeyVersion: "v1",
   logLevel: "debug",
   serviceName: "vision-api"
 } as const;
 
-const pool = createDatabasePool(databaseUrl);
-const db = createDatabaseClient(pool);
-const authn = createAuthnService(db, {
+const runtimePool = createDatabasePool(runtimeConfig.databaseUrl);
+const runtimeDb = createDatabaseClient(runtimePool);
+
+const adminTargetDatabaseUrl = deriveAdminTargetDatabaseUrl(
+  adminConfig.adminDatabaseUrl,
+  adminConfig.adminTargetDatabaseName
+);
+const adminPool = createDatabasePool(adminTargetDatabaseUrl);
+const adminDb = createDatabaseClient(adminPool);
+
+const authn = createAuthnService(runtimeDb, {
   now: () => new Date(FIXED_TEST_TIME),
   sessionTtlMs: 60 * 60 * 1000,
   mfaEncryptionKey: MFA_ENCRYPTION_KEY,
@@ -84,7 +95,7 @@ async function seedSubject(
   const id = `sub_${randomUUID()}`;
   createdSubjectIds.push(id);
 
-  await db.insert(authSubjects).values({
+  await adminDb.insert(authSubjects).values({
     id,
     subjectType,
     loginIdentifier,
@@ -169,7 +180,7 @@ async function setSessionScope(
     activeBranchId?: string | null;
   }
 ) {
-  await db
+  await adminDb
     .update(authSessions)
     .set({
       activeTenantId: input.activeTenantId ?? null,
@@ -186,22 +197,27 @@ describe("createAuthorizationGuard", () => {
 
   afterEach(async () => {
     if (createdSessionIds.length > 0) {
-      await db
+      await adminDb
         .delete(authAccountEvents)
         .where(inArray(authAccountEvents.sessionId, createdSessionIds));
-      await db.delete(authSessions).where(inArray(authSessions.id, createdSessionIds));
+      await adminDb
+        .delete(authSessions)
+        .where(inArray(authSessions.id, createdSessionIds));
     }
 
     if (createdSubjectIds.length > 0) {
-      await db
+      await adminDb
         .delete(authAccountEvents)
         .where(inArray(authAccountEvents.subjectId, createdSubjectIds));
-      await db.delete(authSubjects).where(inArray(authSubjects.id, createdSubjectIds));
+      await adminDb
+        .delete(authSubjects)
+        .where(inArray(authSubjects.id, createdSubjectIds));
     }
   });
 
   afterAll(async () => {
-    await closeDatabasePool(pool);
+    await closeDatabasePool(runtimePool);
+    await closeDatabasePool(adminPool);
   });
 
   it("keeps session activeTenantId authoritative over route facts", async () => {

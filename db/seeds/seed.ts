@@ -3,11 +3,26 @@ import {
   closeDatabasePool,
   createDatabaseClient,
   createDatabasePool,
+  deriveAdminTargetDatabaseUrl,
+  getDatabaseAdminConfig,
   getDatabaseRuntimeConfig,
   withDatabaseTransaction,
 } from "../../packages/db/src/index";
 
-const { databaseUrl } = getDatabaseRuntimeConfig(process.env);
+function resolveSeedDatabaseUrl(env: NodeJS.ProcessEnv): string {
+  if (env.DATABASE_ADMIN_URL || env.DATABASE_ADMIN_TARGET_DB) {
+    const adminConfig = getDatabaseAdminConfig(env);
+
+    return deriveAdminTargetDatabaseUrl(
+      adminConfig.adminDatabaseUrl,
+      adminConfig.adminTargetDatabaseName,
+    );
+  }
+
+  return getDatabaseRuntimeConfig(env).databaseUrl;
+}
+
+const databaseUrl = resolveSeedDatabaseUrl(process.env);
 const pool = createDatabasePool(databaseUrl);
 const db = createDatabaseClient(pool);
 

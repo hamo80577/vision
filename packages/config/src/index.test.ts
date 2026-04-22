@@ -12,9 +12,9 @@ import {
 } from "./index";
 
 const localDatabaseUrl =
-  "postgresql://vision_local:vision_local_password@localhost:5433/vision_local";
+  "postgresql://vision_runtime:vision_runtime_password@localhost:5433/vision_local";
 const localAdminDatabaseUrl =
-  "postgresql://vision_local:vision_local_password@localhost:5433/postgres";
+  "postgresql://vision_admin:vision_admin_password@localhost:5433/postgres";
 
 const validApiEnv = {
   APP_ENV: "local",
@@ -122,7 +122,8 @@ describe("@vision/config", () => {
     expect(() =>
       parseWorkerConfig({
         APP_ENV: "production",
-        DATABASE_URL: "postgresql://vision_service:vision_local_password@db.internal:5432/vision",
+        DATABASE_URL:
+          "postgresql://vision_service:vision_runtime_password@db.internal:5432/vision",
       }),
     ).toThrow(ConfigError);
   });
@@ -131,7 +132,8 @@ describe("@vision/config", () => {
     expect(() =>
       parseWorkerConfig({
         APP_ENV: "staging",
-        DATABASE_URL: "postgresql://vision_local:staging_password@db.internal:5432/vision",
+        DATABASE_URL:
+          "postgresql://vision_runtime:staging_password@db.internal:5432/vision",
       }),
     ).toThrow(ConfigError);
   });
@@ -206,13 +208,25 @@ describe("@vision/config", () => {
     ).toThrow(ConfigError);
   });
 
+  it("fails when DATABASE_ADMIN_URL points at a different database host", () => {
+    expect(() =>
+      parseDatabaseAdminConfig({
+        APP_ENV: "production",
+        DATABASE_URL: "postgresql://vision_service:prod_password@db.internal:5432/vision_prod",
+        DATABASE_ADMIN_URL:
+          "postgresql://vision_migrator:admin_password@other-host.internal:5432/postgres",
+        DATABASE_ADMIN_TARGET_DB: "vision_prod",
+      }),
+    ).toThrow(ConfigError);
+  });
+
   it("fails when DATABASE_ADMIN_URL does not target the postgres maintenance database", () => {
     expect(() =>
       parseDatabaseAdminConfig({
         APP_ENV: "local",
         DATABASE_URL: localDatabaseUrl,
         DATABASE_ADMIN_URL:
-          "postgresql://vision_local:vision_local_password@localhost:5433/template1",
+          "postgresql://vision_admin:vision_admin_password@localhost:5433/template1",
         DATABASE_ADMIN_TARGET_DB: "vision_local",
       }),
     ).toThrow(ConfigError);
@@ -225,6 +239,47 @@ describe("@vision/config", () => {
         DATABASE_URL: localDatabaseUrl,
         DATABASE_ADMIN_URL: localDatabaseUrl,
         DATABASE_ADMIN_TARGET_DB: "vision_local",
+      }),
+    ).toThrow(ConfigError);
+  });
+
+  it("fails when DATABASE_ADMIN_URL reuses the runtime role username", () => {
+    expect(() =>
+      parseDatabaseAdminConfig({
+        APP_ENV: "test",
+        DATABASE_URL: "postgresql://vision_runtime:runtime_password@localhost:5432/vision_local",
+        DATABASE_ADMIN_URL:
+          "postgresql://vision_runtime:admin_password@localhost:5432/postgres",
+        DATABASE_ADMIN_TARGET_DB: "vision_local",
+      }),
+    ).toThrow(ConfigError);
+  });
+
+  it("fails when DATABASE_URL omits role credentials", () => {
+    expect(() =>
+      parseDatabaseRuntimeConfig({
+        APP_ENV: "test",
+        DATABASE_URL: "postgresql://localhost:5432/vision_local",
+      }),
+    ).toThrow(ConfigError);
+  });
+
+  it("fails when DATABASE_ADMIN_URL omits role credentials", () => {
+    expect(() =>
+      parseDatabaseAdminConfig({
+        APP_ENV: "test",
+        DATABASE_URL: "postgresql://vision_runtime:runtime_password@localhost:5432/vision_local",
+        DATABASE_ADMIN_URL: "postgresql://localhost:5432/postgres",
+        DATABASE_ADMIN_TARGET_DB: "vision_local",
+      }),
+    ).toThrow(ConfigError);
+  });
+
+  it("rejects loopback hosts with the local database name in production runtime config", () => {
+    expect(() =>
+      parseDatabaseRuntimeConfig({
+        APP_ENV: "production",
+        DATABASE_URL: "postgresql://vision_service:prod_password@127.0.0.1:5432/vision_local",
       }),
     ).toThrow(ConfigError);
   });

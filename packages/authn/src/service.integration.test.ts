@@ -11,6 +11,8 @@ import {
   closeDatabasePool,
   createDatabaseClient,
   createDatabasePool,
+  deriveAdminTargetDatabaseUrl,
+  getDatabaseAdminConfig,
   getDatabaseRuntimeConfig,
 } from "@vision/db";
 
@@ -23,10 +25,20 @@ import {
 const AUTHN_INTEGRATION_TIMEOUT_MS = 20_000;
 const MFA_ENCRYPTION_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 
-const { databaseUrl } = getDatabaseRuntimeConfig(process.env);
-const pool = createDatabasePool(databaseUrl);
-const db = createDatabaseClient(pool);
-const authn = createAuthnService(db, {
+const runtimeConfig = getDatabaseRuntimeConfig(process.env);
+const adminConfig = getDatabaseAdminConfig(process.env);
+
+const runtimePool = createDatabasePool(runtimeConfig.databaseUrl);
+const runtimeDb = createDatabaseClient(runtimePool);
+
+const adminTargetDatabaseUrl = deriveAdminTargetDatabaseUrl(
+  adminConfig.adminDatabaseUrl,
+  adminConfig.adminTargetDatabaseName,
+);
+const adminPool = createDatabasePool(adminTargetDatabaseUrl);
+const adminDb = createDatabaseClient(adminPool);
+
+const authn = createAuthnService(runtimeDb, {
   sessionTtlMs: 60 * 60 * 1000,
   mfaEncryptionKey: MFA_ENCRYPTION_KEY,
   mfaEncryptionKeyVersion: "v1",
@@ -35,8 +47,34 @@ const authn = createAuthnService(db, {
 let createdSubjectIds: string[] = [];
 let createdSessionIds: string[] = [];
 
+function deriveRuntimeDatabaseUrl(databaseName: string): string {
+  const url = new URL(runtimeConfig.databaseUrl);
+  url.pathname = `/${databaseName}`;
+
+  return url.toString();
+}
+
+async function expectRuntimeConnectionDenied(databaseName: string): Promise<void> {
+  const pool = createDatabasePool(deriveRuntimeDatabaseUrl(databaseName), {
+    max: 1,
+  });
+
+  try {
+    await pool.query("select 1");
+  } catch (error) {
+    expect(error).toMatchObject({
+      code: "42501",
+    });
+    return;
+  } finally {
+    await closeDatabasePool(pool).catch(() => undefined);
+  }
+
+  throw new Error(`Expected runtime role to be denied access to ${databaseName}`);
+}
+
 async function listSessionsForSubject(subjectId: string) {
-  return db
+  return runtimeDb
     .select()
     .from(authSessions)
     .where(eq(authSessions.subjectId, subjectId));
@@ -56,7 +94,7 @@ async function seedSubject(
   const id = `sub_${randomUUID()}`;
   createdSubjectIds.push(id);
 
-  await db.insert(authSubjects).values({
+  await adminDb.insert(authSubjects).values({
     id,
     subjectType,
     loginIdentifier,
@@ -69,6 +107,59 @@ async function seedSubject(
 }
 
 describe("createAuthnService", () => {
+  it(
+    "uses a dedicated runtime role that cannot seed or clean fixture tables",
+    async () => {
+      const runtimeUsername = decodeURIComponent(new URL(runtimeConfig.databaseUrl).username);
+      const adminUsername = decodeURIComponent(new URL(adminTargetDatabaseUrl).username);
+      const runtimeOnlySubjectId = `sub_${randomUUID()}`;
+      const runtimeOnlyLoginIdentifier = `fixture-runtime+${randomUUID()}@vision.test`;
+      createdSubjectIds.push(runtimeOnlySubjectId);
+
+      expect(runtimeUsername).not.toBe("");
+      expect(adminUsername).not.toBe("");
+      expect(runtimeUsername).not.toBe(adminUsername);
+
+      const seededSubject = await seedSubject(
+        "customer",
+        `fixture-admin+${randomUUID()}@vision.test`,
+        "S3cure-password!",
+      );
+
+      await expect(
+        runtimeDb.insert(authSubjects).values({
+          id: runtimeOnlySubjectId,
+          subjectType: "customer",
+          loginIdentifier: runtimeOnlyLoginIdentifier,
+          normalizedLoginIdentifier: normalizeLoginIdentifier(runtimeOnlyLoginIdentifier),
+          passwordHash: await hashPassword("S3cure-password!"),
+          internalSensitivity: null,
+        }),
+      ).rejects.toThrow();
+
+      await expect(
+        runtimeDb.delete(authSubjects).where(eq(authSubjects.id, seededSubject.id)),
+      ).rejects.toThrow();
+
+      await expect(
+        runtimeDb
+          .select({ id: authSubjects.id })
+          .from(authSubjects)
+          .where(eq(authSubjects.id, seededSubject.id)),
+      ).resolves.toHaveLength(1);
+    },
+    AUTHN_INTEGRATION_TIMEOUT_MS,
+  );
+
+  it(
+    "denies runtime credentials on non-target databases after reset",
+    async () => {
+      await expectRuntimeConnectionDenied("postgres");
+      await expectRuntimeConnectionDenied("template1");
+    },
+    AUTHN_INTEGRATION_TIMEOUT_MS,
+  );
+
   beforeEach(() => {
     createdSubjectIds = [];
     createdSessionIds = [];
@@ -76,22 +167,27 @@ describe("createAuthnService", () => {
 
   afterEach(async () => {
     if (createdSessionIds.length > 0) {
-      await db
+      await adminDb
         .delete(authAccountEvents)
         .where(inArray(authAccountEvents.sessionId, createdSessionIds));
-      await db.delete(authSessions).where(inArray(authSessions.id, createdSessionIds));
+      await adminDb
+        .delete(authSessions)
+        .where(inArray(authSessions.id, createdSessionIds));
     }
 
     if (createdSubjectIds.length > 0) {
-      await db
+      await adminDb
         .delete(authAccountEvents)
         .where(inArray(authAccountEvents.subjectId, createdSubjectIds));
-      await db.delete(authSubjects).where(inArray(authSubjects.id, createdSubjectIds));
+      await adminDb
+        .delete(authSubjects)
+        .where(inArray(authSubjects.id, createdSubjectIds));
     }
   });
 
   afterAll(async () => {
-    await closeDatabasePool(pool);
+    await closeDatabasePool(runtimePool);
+    await closeDatabasePool(adminPool);
   });
 
   it(
@@ -390,7 +486,7 @@ describe("createAuthnService", () => {
 
       createdSessionIds.push(login.session.sessionId);
 
-      await db
+      await adminDb
         .update(authSessions)
         .set({
           activeTenantId: "tenant_1",
@@ -407,7 +503,7 @@ describe("createAuthnService", () => {
       expect(switched.session.activeTenantId).toBe("tenant_1");
       expect(switched.session.activeBranchId).toBe("branch_1");
 
-      const events = await db
+      const events = await adminDb
         .select()
         .from(authAccountEvents)
         .where(eq(authAccountEvents.sessionId, login.session.sessionId));
@@ -435,7 +531,7 @@ describe("createAuthnService", () => {
 
       createdSessionIds.push(login.session.sessionId);
 
-      await db
+      await adminDb
         .update(authSessions)
         .set({
           activeTenantId: "tenant_1",
@@ -453,11 +549,11 @@ describe("createAuthnService", () => {
         code: "invalid_session_context",
       });
 
-      const [session] = await db
+      const [session] = await runtimeDb
         .select()
         .from(authSessions)
         .where(eq(authSessions.id, login.session.sessionId));
-      const events = await db
+      const events = await adminDb
         .select()
         .from(authAccountEvents)
         .where(eq(authAccountEvents.sessionId, login.session.sessionId));
@@ -486,7 +582,7 @@ describe("createAuthnService", () => {
 
       createdSessionIds.push(login.session.sessionId);
 
-      await db
+      await adminDb
         .update(authSessions)
         .set({
           activeTenantId: "tenant_1",
@@ -503,7 +599,7 @@ describe("createAuthnService", () => {
       expect(switched.session.activeTenantId).toBe("tenant_1");
       expect(switched.session.activeBranchId).toBe("branch_2");
 
-      const events = await db
+      const events = await adminDb
         .select()
         .from(authAccountEvents)
         .where(eq(authAccountEvents.sessionId, login.session.sessionId));

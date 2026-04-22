@@ -7,11 +7,13 @@ describe("@vision/db config helpers", () => {
     expect(
       getDatabaseRuntimeConfig({
         APP_ENV: "local",
-        DATABASE_URL: "postgresql://vision_local:vision_local_password@localhost:5432/vision_local",
+        DATABASE_URL:
+          "postgresql://vision_runtime:vision_runtime_password@localhost:5432/vision_local",
       }),
     ).toEqual({
       appEnv: "local",
-      databaseUrl: "postgresql://vision_local:vision_local_password@localhost:5432/vision_local",
+      databaseUrl:
+        "postgresql://vision_runtime:vision_runtime_password@localhost:5432/vision_local",
     });
   });
 
@@ -19,15 +21,18 @@ describe("@vision/db config helpers", () => {
     expect(
       getDatabaseAdminConfig({
         APP_ENV: "local",
-        DATABASE_URL: "postgresql://vision_local:vision_local_password@localhost:5432/vision_local",
+        DATABASE_URL:
+          "postgresql://vision_runtime:vision_runtime_password@localhost:5432/vision_local",
         DATABASE_ADMIN_URL:
-          "postgresql://vision_local:vision_local_password@localhost:5432/postgres",
+          "postgresql://vision_admin:vision_admin_password@localhost:5432/postgres",
         DATABASE_ADMIN_TARGET_DB: "vision_local",
       }),
     ).toEqual({
       appEnv: "local",
-      databaseUrl: "postgresql://vision_local:vision_local_password@localhost:5432/vision_local",
-      adminDatabaseUrl: "postgresql://vision_local:vision_local_password@localhost:5432/postgres",
+      databaseUrl:
+        "postgresql://vision_runtime:vision_runtime_password@localhost:5432/vision_local",
+      adminDatabaseUrl:
+        "postgresql://vision_admin:vision_admin_password@localhost:5432/postgres",
       adminTargetDatabaseName: "vision_local",
     });
   });

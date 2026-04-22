@@ -12,3 +12,4 @@ export {
   authSubjects,
   authSubjectType,
 } from "./auth";
+export { tenantRlsProbes } from "./tenant-rls-probes";

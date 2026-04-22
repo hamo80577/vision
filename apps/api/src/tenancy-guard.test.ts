@@ -11,6 +11,8 @@ import {
   closeDatabasePool,
   createDatabaseClient,
   createDatabasePool,
+  deriveAdminTargetDatabaseUrl,
+  getDatabaseAdminConfig,
   getDatabaseRuntimeConfig,
 } from "@vision/db";
 
@@ -19,10 +21,21 @@ import { createAuthorizationGuard } from "./authz-guard";
 import { createTenancyGuard } from "./tenancy-guard";
 import { buildApi } from "./server";
 
-const { appEnv, databaseUrl } = getDatabaseRuntimeConfig(process.env);
-const pool = createDatabasePool(databaseUrl);
-const db = createDatabaseClient(pool);
-const authn = createAuthnService(db, {
+const TENANCY_GUARD_TEST_TIMEOUT_MS = 20_000;
+const runtimeConfig = getDatabaseRuntimeConfig(process.env);
+const adminConfig = getDatabaseAdminConfig(process.env);
+
+const runtimePool = createDatabasePool(runtimeConfig.databaseUrl);
+const runtimeDb = createDatabaseClient(runtimePool);
+
+const adminTargetDatabaseUrl = deriveAdminTargetDatabaseUrl(
+  adminConfig.adminDatabaseUrl,
+  adminConfig.adminTargetDatabaseName,
+);
+const adminPool = createDatabasePool(adminTargetDatabaseUrl);
+const adminDb = createDatabaseClient(adminPool);
+
+const authn = createAuthnService(runtimeDb, {
   sessionTtlMs: 60 * 60 * 1000,
   mfaEncryptionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
   mfaEncryptionKeyVersion: "v1",
@@ -44,7 +57,7 @@ async function seedInternalSubject(loginIdentifier: string) {
   const id = `sub_${randomUUID()}`;
   createdSubjectIds.push(id);
 
-  await db.insert(authSubjects).values({
+  await adminDb.insert(authSubjects).values({
     id,
     subjectType: "internal",
     loginIdentifier,
@@ -62,31 +75,38 @@ describe("createTenancyGuard", () => {
 
   afterEach(async () => {
     if (createdSessionIds.length > 0) {
-      await db
+      await adminDb
         .delete(authAccountEvents)
         .where(inArray(authAccountEvents.sessionId, createdSessionIds));
-      await db.delete(authSessions).where(inArray(authSessions.id, createdSessionIds));
+      await adminDb
+        .delete(authSessions)
+        .where(inArray(authSessions.id, createdSessionIds));
     }
 
     if (createdSubjectIds.length > 0) {
-      await db
+      await adminDb
         .delete(authAccountEvents)
         .where(inArray(authAccountEvents.subjectId, createdSubjectIds));
-      await db.delete(authSubjects).where(inArray(authSubjects.id, createdSubjectIds));
+      await adminDb
+        .delete(authSubjects)
+        .where(inArray(authSubjects.id, createdSubjectIds));
     }
   });
 
   afterAll(async () => {
-    await closeDatabasePool(pool);
+    await closeDatabasePool(runtimePool);
+    await closeDatabasePool(adminPool);
   });
 
-  it("returns 401 before tenancy when the session is missing", async () => {
+  it(
+    "returns 401 before tenancy when the session is missing",
+    async () => {
     const api = buildApi({
       runtime: {
-        appEnv,
+        appEnv: runtimeConfig.appEnv,
         host: "127.0.0.1",
         port: 4000,
-        databaseUrl,
+        databaseUrl: runtimeConfig.databaseUrl,
         mfaEncryptionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
         mfaEncryptionKeyVersion: "v1",
         logLevel: "debug",
@@ -124,17 +144,21 @@ describe("createTenancyGuard", () => {
       url: "/_test/erp/branches/branch_1",
     });
 
-    expect(response.statusCode).toBe(401);
-    await api.close();
-  });
+      expect(response.statusCode).toBe(401);
+      await api.close();
+    },
+    TENANCY_GUARD_TEST_TIMEOUT_MS,
+  );
 
-  it("maps tenancy mismatch to a stable 403 code before authz", async () => {
+  it(
+    "maps tenancy mismatch to a stable 403 code before authz",
+    async () => {
     const api = buildApi({
       runtime: {
-        appEnv,
+        appEnv: runtimeConfig.appEnv,
         host: "127.0.0.1",
         port: 4000,
-        databaseUrl,
+        databaseUrl: runtimeConfig.databaseUrl,
         mfaEncryptionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
         mfaEncryptionKeyVersion: "v1",
         logLevel: "debug",
@@ -194,7 +218,7 @@ describe("createTenancyGuard", () => {
       cookie.replace(`${AUTH_SESSION_COOKIE_NAME}=`, "").split(".")[0] ?? "";
     createdSessionIds.push(sessionId);
 
-    await db
+    await adminDb
       .update(authSessions)
       .set({
         activeTenantId: "tenant_1",
@@ -208,12 +232,14 @@ describe("createTenancyGuard", () => {
       headers: { cookie },
     });
 
-    expect(response.statusCode).toBe(403);
-    expect(response.json()).toMatchObject({
-      code: "tenant_intent_mismatch",
-    });
-    expect(response.json()).not.toHaveProperty("debug");
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({
+        code: "tenant_intent_mismatch",
+      });
+      expect(response.json()).not.toHaveProperty("debug");
 
-    await api.close();
-  });
+      await api.close();
+    },
+    TENANCY_GUARD_TEST_TIMEOUT_MS,
+  );
 });
