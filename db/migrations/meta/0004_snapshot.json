@@ -922,28 +922,26 @@
       "policies": {
         "tenant_rls_probes_select": {
           "name": "tenant_rls_probes_select",
-          "as": "permissive",
-          "for": "select",
+          "as": "PERMISSIVE",
+          "for": "SELECT",
           "to": [
             "public"
           ],
-          "using": "tenant_id = vision.require_tenant_id()",
-          "withCheck": null
+          "using": "tenant_id = vision.require_tenant_id()"
         },
         "tenant_rls_probes_insert": {
           "name": "tenant_rls_probes_insert",
-          "as": "permissive",
-          "for": "insert",
+          "as": "PERMISSIVE",
+          "for": "INSERT",
           "to": [
             "public"
           ],
-          "using": null,
           "withCheck": "tenant_id = vision.require_tenant_id()"
         },
         "tenant_rls_probes_update": {
           "name": "tenant_rls_probes_update",
-          "as": "permissive",
-          "for": "update",
+          "as": "PERMISSIVE",
+          "for": "UPDATE",
           "to": [
             "public"
           ],
@@ -952,13 +950,12 @@
         },
         "tenant_rls_probes_delete": {
           "name": "tenant_rls_probes_delete",
-          "as": "permissive",
-          "for": "delete",
+          "as": "PERMISSIVE",
+          "for": "DELETE",
           "to": [
             "public"
           ],
-          "using": "tenant_id = vision.require_tenant_id()",
-          "withCheck": null
+          "using": "tenant_id = vision.require_tenant_id()"
         }
       },
       "checkConstraints": {},
