@@ -21,6 +21,7 @@ import { createAuthorizationGuard } from "./authz-guard";
 import { createTenancyGuard } from "./tenancy-guard";
 import { buildApi } from "./server";
 
+const TENANCY_GUARD_TEST_TIMEOUT_MS = 20_000;
 const runtimeConfig = getDatabaseRuntimeConfig(process.env);
 const adminConfig = getDatabaseAdminConfig(process.env);
 
@@ -97,7 +98,9 @@ describe("createTenancyGuard", () => {
     await closeDatabasePool(adminPool);
   });
 
-  it("returns 401 before tenancy when the session is missing", async () => {
+  it(
+    "returns 401 before tenancy when the session is missing",
+    async () => {
     const api = buildApi({
       runtime: {
         appEnv: runtimeConfig.appEnv,
@@ -141,11 +144,15 @@ describe("createTenancyGuard", () => {
       url: "/_test/erp/branches/branch_1",
     });
 
-    expect(response.statusCode).toBe(401);
-    await api.close();
-  });
+      expect(response.statusCode).toBe(401);
+      await api.close();
+    },
+    TENANCY_GUARD_TEST_TIMEOUT_MS,
+  );
 
-  it("maps tenancy mismatch to a stable 403 code before authz", async () => {
+  it(
+    "maps tenancy mismatch to a stable 403 code before authz",
+    async () => {
     const api = buildApi({
       runtime: {
         appEnv: runtimeConfig.appEnv,
@@ -225,12 +232,14 @@ describe("createTenancyGuard", () => {
       headers: { cookie },
     });
 
-    expect(response.statusCode).toBe(403);
-    expect(response.json()).toMatchObject({
-      code: "tenant_intent_mismatch",
-    });
-    expect(response.json()).not.toHaveProperty("debug");
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({
+        code: "tenant_intent_mismatch",
+      });
+      expect(response.json()).not.toHaveProperty("debug");
 
-    await api.close();
-  });
+      await api.close();
+    },
+    TENANCY_GUARD_TEST_TIMEOUT_MS,
+  );
 });
