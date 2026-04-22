@@ -497,6 +497,7 @@ describe("createAuthnService", () => {
       const switched = await authn.switchActiveBranchContext({
         token: login.sessionToken,
         activeTenantId: "tenant_1",
+        allowedBranchIds: ["branch_1", "branch_2"],
         nextBranchId: "branch_1",
       });
 
@@ -543,6 +544,7 @@ describe("createAuthnService", () => {
         authn.switchActiveBranchContext({
           token: login.sessionToken,
           activeTenantId: "tenant_1",
+          allowedBranchIds: ["branch_1", "branch_2"],
           nextBranchId: "   ",
         }),
       ).rejects.toMatchObject({
@@ -593,6 +595,7 @@ describe("createAuthnService", () => {
       const switched = await authn.switchActiveBranchContext({
         token: login.sessionToken,
         activeTenantId: "tenant_1",
+        allowedBranchIds: ["branch_1", "branch_2"],
         nextBranchId: "branch_2",
       });
 
@@ -608,6 +611,58 @@ describe("createAuthnService", () => {
       expect(event?.eventType).toBe("branch_context_switched");
       expect(event?.detail).toContain("branch_1");
       expect(event?.detail).toContain("branch_2");
+    },
+    AUTHN_INTEGRATION_TIMEOUT_MS,
+  );
+
+  it(
+    "rejects branch switch targets that are outside the caller allowlist",
+    async () => {
+      const loginIdentifier = `branch-allowlist+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!", "none");
+
+      const login = await authn.login({
+        subjectType: "internal",
+        loginIdentifier,
+        password: "S3cure-password!",
+      });
+
+      if (login.kind !== "session") {
+        throw new Error("Expected session login result.");
+      }
+
+      createdSessionIds.push(login.session.sessionId);
+
+      await adminDb
+        .update(authSessions)
+        .set({
+          activeTenantId: "tenant_1",
+          activeBranchId: "branch_1",
+        })
+        .where(eq(authSessions.id, login.session.sessionId));
+
+      await expect(
+        authn.switchActiveBranchContext({
+          token: login.sessionToken,
+          activeTenantId: "tenant_1",
+          allowedBranchIds: ["branch_1"],
+          nextBranchId: "branch_2",
+        }),
+      ).rejects.toMatchObject({
+        code: "invalid_session_context",
+      });
+
+      const [session] = await runtimeDb
+        .select()
+        .from(authSessions)
+        .where(eq(authSessions.id, login.session.sessionId));
+      const events = await adminDb
+        .select()
+        .from(authAccountEvents)
+        .where(eq(authAccountEvents.sessionId, login.session.sessionId));
+
+      expect(session?.activeBranchId).toBe("branch_1");
+      expect(events.find((entry) => entry.eventType === "branch_context_switched")).toBeUndefined();
     },
     AUTHN_INTEGRATION_TIMEOUT_MS,
   );

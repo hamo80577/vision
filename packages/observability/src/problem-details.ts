@@ -13,6 +13,7 @@ export type ProblemCode =
   | "insufficient_scope"
   | "self_access_only"
   | "explicit_deny"
+  | "csrf_token_invalid"
   | "unsupported_execution_surface"
   | "unsupported_tenancy_scope"
   | "platform_tenant_execution_disabled"

@@ -25,7 +25,11 @@ import {
 } from "@vision/db";
 import type { ActiveTenantAccessSnapshot } from "@vision/tenancy";
 
-import { AUTH_SESSION_COOKIE_NAME } from "./auth-cookie";
+import {
+  AUTH_CSRF_COOKIE_NAME,
+  AUTH_CSRF_HEADER_NAME,
+  AUTH_SESSION_COOKIE_NAME,
+} from "./auth-cookie";
 import { buildApi } from "./server";
 
 const AUTH_ROUTE_TEST_TIMEOUT_MS = 20_000;
@@ -66,14 +70,54 @@ const authn = createAuthnService(runtimeDb, {
 let createdSubjectIds: string[] = [];
 let createdSessionIds: string[] = [];
 
-function getAuthCookie(setCookie: string | string[] | undefined): string {
-  const raw = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+function getCookieValue(
+  setCookie: string | string[] | undefined,
+  cookieName: string,
+): string {
+  const values = Array.isArray(setCookie) ? setCookie : setCookie ? [setCookie] : [];
+  const raw = values.find((candidate) => candidate.startsWith(`${cookieName}=`));
 
   if (!raw) {
-    throw new Error("Missing Set-Cookie header.");
+    throw new Error(`Missing ${cookieName} Set-Cookie header.`);
   }
 
-  return raw.split(";")[0] ?? raw;
+  const cookiePair = raw.split(";")[0] ?? raw;
+  return cookiePair.replace(`${cookieName}=`, "");
+}
+
+function getAuthCookie(setCookie: string | string[] | undefined): string {
+  return `${AUTH_SESSION_COOKIE_NAME}=${getCookieValue(
+    setCookie,
+    AUTH_SESSION_COOKIE_NAME,
+  )}`;
+}
+
+function getCsrfToken(setCookie: string | string[] | undefined): string {
+  return getCookieValue(setCookie, AUTH_CSRF_COOKIE_NAME);
+}
+
+function buildAuthenticatedMutationHeaders(
+  setCookie: string | string[] | undefined,
+): Record<string, string> {
+  const csrfToken = getCsrfToken(setCookie);
+
+  return {
+    cookie: `${getAuthCookie(setCookie)}; ${AUTH_CSRF_COOKIE_NAME}=${csrfToken}`,
+    [AUTH_CSRF_HEADER_NAME]: csrfToken,
+  };
+}
+
+function createTotpCode(manualEntryKey: string, accountName: string): string {
+  const totp = new OTPAuth.TOTP({
+    issuer: "Vision",
+    label: accountName,
+    algorithm: "SHA1",
+    digits: 6,
+    period: 30,
+    secret: OTPAuth.Secret.fromBase32(manualEntryKey),
+  });
+
+  return totp.generate({ timestamp: FIXED_TEST_TIME.getTime() });
 }
 
 function buildApiWithTenancyAccess(
@@ -111,6 +155,60 @@ async function seedSubject(
     passwordHash: await hashPassword(password),
     internalSensitivity,
   });
+}
+
+async function createMfaVerifiedInternalSession(
+  api: ReturnType<typeof buildApi>,
+  input: {
+    loginIdentifier: string;
+    internalSensitivity: "platform_admin" | "tenant_owner" | "branch_manager";
+  },
+) {
+  await seedSubject(
+    "internal",
+    input.loginIdentifier,
+    "S3cure-password!",
+    input.internalSensitivity,
+  );
+
+  const login = await api.inject({
+    method: "POST",
+    url: "/auth/internal/login",
+    payload: {
+      loginIdentifier: input.loginIdentifier,
+      password: "S3cure-password!",
+    },
+  });
+  const challengeToken = (login.json() as { challengeToken: string }).challengeToken;
+
+  const start = await api.inject({
+    method: "POST",
+    url: "/auth/internal/mfa/enrollment/start",
+    payload: {
+      challengeToken,
+      accountName: input.loginIdentifier,
+    },
+  });
+  const enrollment = start.json() as { manualEntryKey: string };
+
+  const verify = await api.inject({
+    method: "POST",
+    url: "/auth/internal/mfa/enrollment/verify",
+    payload: {
+      challengeToken,
+      code: createTotpCode(enrollment.manualEntryKey, input.loginIdentifier),
+    },
+  });
+  createdSessionIds.push((verify.json() as { session: { sessionId: string } }).session.sessionId);
+
+  return {
+    login,
+    challengeToken,
+    enrollment,
+    verify,
+    cookie: getAuthCookie(verify.headers["set-cookie"]),
+    csrfToken: getCsrfToken(verify.headers["set-cookie"]),
+  };
 }
 
 describe("auth routes", () => {
@@ -179,9 +277,7 @@ describe("auth routes", () => {
       const response = await api.inject({
         method: "POST",
         url: "/auth/internal/context/branch/switch",
-        headers: {
-          cookie,
-        },
+        headers: buildAuthenticatedMutationHeaders(login.headers["set-cookie"]),
         payload: {
           branchId: "branch_2",
         },
@@ -250,9 +346,7 @@ describe("auth routes", () => {
       const response = await api.inject({
         method: "POST",
         url: "/auth/internal/context/branch/switch",
-        headers: {
-          cookie,
-        },
+        headers: buildAuthenticatedMutationHeaders(login.headers["set-cookie"]),
         payload: {
           branchId: "branch_1",
         },
@@ -321,9 +415,7 @@ describe("auth routes", () => {
       const response = await api.inject({
         method: "POST",
         url: "/auth/internal/context/branch/switch",
-        headers: {
-          cookie,
-        },
+        headers: buildAuthenticatedMutationHeaders(login.headers["set-cookie"]),
         payload: {
           branchId: "branch_2",
         },
@@ -340,6 +432,71 @@ describe("auth routes", () => {
         .where(eq(authSessions.id, sessionId));
 
       expect(session?.activeBranchId).toBe("branch_1");
+
+      await api.close();
+    },
+    AUTH_ROUTE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "fails closed on branch switch when the CSRF token is missing",
+    async () => {
+      const api = buildApiWithTenancyAccess(() => ({
+        tenantId: "tenant_1",
+        tenantRole: "branch_manager",
+        allowedBranchIds: ["branch_1", "branch_2"],
+      }));
+      const loginIdentifier = `switch-csrf+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!", "none");
+
+      const login = await api.inject({
+        method: "POST",
+        url: "/auth/internal/login",
+        payload: {
+          loginIdentifier,
+          password: "S3cure-password!",
+        },
+      });
+
+      const cookie = getAuthCookie(login.headers["set-cookie"]);
+      const sessionId = cookie.replace(`${AUTH_SESSION_COOKIE_NAME}=`, "").split(".")[0] ?? "";
+      createdSessionIds.push(sessionId);
+
+      await adminDb
+        .update(authSessions)
+        .set({
+          activeTenantId: "tenant_1",
+          activeBranchId: "branch_1",
+        })
+        .where(eq(authSessions.id, sessionId));
+
+      const response = await api.inject({
+        method: "POST",
+        url: "/auth/internal/context/branch/switch",
+        headers: {
+          cookie,
+        },
+        payload: {
+          branchId: "branch_2",
+        },
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({
+        code: "csrf_token_invalid",
+      });
+
+      const [session] = await runtimeDb
+        .select()
+        .from(authSessions)
+        .where(eq(authSessions.id, sessionId));
+      const events = await adminDb
+        .select()
+        .from(authAccountEvents)
+        .where(eq(authAccountEvents.sessionId, sessionId));
+
+      expect(session?.activeBranchId).toBe("branch_1");
+      expect(events.find((entry) => entry.eventType === "branch_context_switched")).toBeUndefined();
 
       await api.close();
     },
@@ -364,11 +521,14 @@ describe("auth routes", () => {
       createdSessionIds.push((login.json() as { session: { sessionId: string } }).session.sessionId);
 
       expect(login.statusCode).toBe(200);
-      expect(login.headers["set-cookie"]).toEqual(expect.any(String));
-      expect(login.headers["set-cookie"]).toContain("HttpOnly");
-      expect(login.headers["set-cookie"]).toContain("SameSite=Lax");
-      expect(login.headers["set-cookie"]).toContain("Path=/");
-      expect(login.headers["set-cookie"]).not.toContain("Secure");
+      expect(getAuthCookie(login.headers["set-cookie"])).toContain(`${AUTH_SESSION_COOKIE_NAME}=`);
+      expect(getCsrfToken(login.headers["set-cookie"])).toEqual(expect.any(String));
+      expect(login.headers["set-cookie"]).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("HttpOnly"),
+          expect.stringContaining(`${AUTH_CSRF_COOKIE_NAME}=`),
+        ]),
+      );
 
       const session = await api.inject({
         method: "GET",
@@ -508,6 +668,53 @@ describe("auth routes", () => {
   );
 
   it(
+    "fails closed on logout when the CSRF token is missing",
+    async () => {
+      const api = buildApi({ runtime, authService: authn });
+      const loginIdentifier = `logout-csrf+${randomUUID()}@vision.test`;
+      await seedSubject("customer", loginIdentifier, "S3cure-password!");
+
+      const login = await api.inject({
+        method: "POST",
+        url: "/auth/customer/login",
+        payload: {
+          loginIdentifier,
+          password: "S3cure-password!",
+        },
+      });
+
+      const cookie = getAuthCookie(login.headers["set-cookie"]);
+      createdSessionIds.push(cookie.replace(`${AUTH_SESSION_COOKIE_NAME}=`, "").split(".")[0]);
+
+      const logout = await api.inject({
+        method: "POST",
+        url: "/auth/logout",
+        headers: {
+          cookie,
+        },
+      });
+
+      expect(logout.statusCode).toBe(403);
+      expect(logout.json()).toMatchObject({
+        code: "csrf_token_invalid",
+      });
+
+      const session = await api.inject({
+        method: "GET",
+        url: "/auth/session",
+        headers: {
+          cookie,
+        },
+      });
+
+      expect(session.statusCode).toBe(200);
+
+      await api.close();
+    },
+    AUTH_ROUTE_TEST_TIMEOUT_MS,
+  );
+
+  it(
     "revokes the current session on logout and prevents reuse",
     async () => {
       const api = buildApi({ runtime, authService: authn });
@@ -528,13 +735,16 @@ describe("auth routes", () => {
       const logout = await api.inject({
         method: "POST",
         url: "/auth/logout",
-        headers: {
-          cookie,
-        },
+        headers: buildAuthenticatedMutationHeaders(login.headers["set-cookie"]),
       });
 
       expect(logout.statusCode).toBe(204);
-      expect(logout.headers["set-cookie"]).toContain(`${AUTH_SESSION_COOKIE_NAME}=`);
+      expect(logout.headers["set-cookie"]).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining(`${AUTH_SESSION_COOKIE_NAME}=`),
+          expect.stringContaining(`${AUTH_CSRF_COOKIE_NAME}=`),
+        ]),
+      );
 
       const reused = await api.inject({
         method: "GET",
@@ -653,15 +863,7 @@ describe("auth routes", () => {
         },
       });
       const enrollment = start.json() as { manualEntryKey: string };
-      const totp = new OTPAuth.TOTP({
-        issuer: "Vision",
-        label: loginIdentifier,
-        algorithm: "SHA1",
-        digits: 6,
-        period: 30,
-        secret: OTPAuth.Secret.fromBase32(enrollment.manualEntryKey),
-      });
-      const code = totp.generate({ timestamp: FIXED_TEST_TIME.getTime() });
+      const code = createTotpCode(enrollment.manualEntryKey, loginIdentifier);
 
       const verify = await api.inject({
         method: "POST",
@@ -673,7 +875,8 @@ describe("auth routes", () => {
       });
 
       expect(verify.statusCode).toBe(200);
-      expect(verify.headers["set-cookie"]).toContain("HttpOnly");
+      expect(getAuthCookie(verify.headers["set-cookie"])).toContain(`${AUTH_SESSION_COOKIE_NAME}=`);
+      expect(getCsrfToken(verify.headers["set-cookie"])).toEqual(expect.any(String));
       expect(verify.json()).toMatchObject({
         session: {
           assuranceLevel: "mfa_verified",
@@ -686,11 +889,11 @@ describe("auth routes", () => {
   );
 
   it(
-    "returns 403 insufficient_assurance when backup-code regeneration is called without step-up",
+    "rejects unknown fields on MFA enrollment start",
     async () => {
       const api = buildApi({ runtime, authService: authn });
-      const loginIdentifier = `manager+${randomUUID()}@vision.test`;
-      await seedSubject("internal", loginIdentifier, "S3cure-password!", "branch_manager");
+      const loginIdentifier = `mfa-start-validation+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!", "platform_admin");
 
       const login = await api.inject({
         method: "POST",
@@ -701,6 +904,44 @@ describe("auth routes", () => {
         },
       });
       const challengeToken = (login.json() as { challengeToken: string }).challengeToken;
+
+      const response = await api.inject({
+        method: "POST",
+        url: "/auth/internal/mfa/enrollment/start",
+        payload: {
+          challengeToken,
+          accountName: loginIdentifier,
+          unexpected: "field",
+        },
+      });
+
+      expect(response.statusCode).toBe(422);
+      expect(response.json()).toMatchObject({
+        code: "validation_error",
+      });
+
+      await api.close();
+    },
+    AUTH_ROUTE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "rejects unknown fields on MFA enrollment verification",
+    async () => {
+      const api = buildApi({ runtime, authService: authn });
+      const loginIdentifier = `mfa-verify-validation+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!", "tenant_owner");
+
+      const login = await api.inject({
+        method: "POST",
+        url: "/auth/internal/login",
+        payload: {
+          loginIdentifier,
+          password: "S3cure-password!",
+        },
+      });
+      const challengeToken = (login.json() as { challengeToken: string }).challengeToken;
+
       const start = await api.inject({
         method: "POST",
         url: "/auth/internal/mfa/enrollment/start",
@@ -710,31 +951,208 @@ describe("auth routes", () => {
         },
       });
       const enrollment = start.json() as { manualEntryKey: string };
-      const totp = new OTPAuth.TOTP({
-        issuer: "Vision",
-        label: loginIdentifier,
-        algorithm: "SHA1",
-        digits: 6,
-        period: 30,
-        secret: OTPAuth.Secret.fromBase32(enrollment.manualEntryKey),
-      });
-      const code = totp.generate({ timestamp: FIXED_TEST_TIME.getTime() });
-      const verify = await api.inject({
+
+      const response = await api.inject({
         method: "POST",
         url: "/auth/internal/mfa/enrollment/verify",
         payload: {
           challengeToken,
-          code,
+          code: createTotpCode(enrollment.manualEntryKey, loginIdentifier),
+          unexpected: "field",
         },
       });
-      const cookie = getAuthCookie(verify.headers["set-cookie"]);
+
+      expect(response.statusCode).toBe(422);
+      expect(response.json()).toMatchObject({
+        code: "validation_error",
+      });
+
+      await api.close();
+    },
+    AUTH_ROUTE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "requires a TOTP code or backup code on MFA verification",
+    async () => {
+      const api = buildApi({ runtime, authService: authn });
+      const loginIdentifier = `mfa-material-validation+${randomUUID()}@vision.test`;
+      await createMfaVerifiedInternalSession(api, {
+        loginIdentifier,
+        internalSensitivity: "branch_manager",
+      });
+
+      const secondLogin = await api.inject({
+        method: "POST",
+        url: "/auth/internal/login",
+        payload: {
+          loginIdentifier,
+          password: "S3cure-password!",
+        },
+      });
+      const challengeToken = (secondLogin.json() as { challengeToken: string }).challengeToken;
+
+      const response = await api.inject({
+        method: "POST",
+        url: "/auth/internal/mfa/verify",
+        payload: {
+          challengeToken,
+        },
+      });
+
+      expect(response.statusCode).toBe(422);
+      expect(response.json()).toMatchObject({
+        code: "validation_error",
+      });
+
+      await api.close();
+    },
+    AUTH_ROUTE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "rejects unexpected fields on step-up start",
+    async () => {
+      const api = buildApi({ runtime, authService: authn });
+      const loginIdentifier = `step-up-start-validation+${randomUUID()}@vision.test`;
+      const session = await createMfaVerifiedInternalSession(api, {
+        loginIdentifier,
+        internalSensitivity: "branch_manager",
+      });
+
+      const response = await api.inject({
+        method: "POST",
+        url: "/auth/internal/assurance/step-up/start",
+        headers: buildAuthenticatedMutationHeaders(session.verify.headers["set-cookie"]),
+        payload: {
+          reason: "credential_reset",
+          unexpected: "field",
+        },
+      });
+
+      expect(response.statusCode).toBe(422);
+      expect(response.json()).toMatchObject({
+        code: "validation_error",
+      });
+
+      await api.close();
+    },
+    AUTH_ROUTE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "rejects unexpected fields on step-up verification",
+    async () => {
+      const api = buildApi({ runtime, authService: authn });
+      const loginIdentifier = `step-up-verify-validation+${randomUUID()}@vision.test`;
+      const session = await createMfaVerifiedInternalSession(api, {
+        loginIdentifier,
+        internalSensitivity: "branch_manager",
+      });
+
+      const start = await api.inject({
+        method: "POST",
+        url: "/auth/internal/assurance/step-up/start",
+        headers: buildAuthenticatedMutationHeaders(session.verify.headers["set-cookie"]),
+        payload: {
+          reason: "credential_reset",
+        },
+      });
+      const challengeToken = (start.json() as { challengeToken: string }).challengeToken;
+
+      const response = await api.inject({
+        method: "POST",
+        url: "/auth/internal/assurance/step-up/verify",
+        headers: buildAuthenticatedMutationHeaders(session.verify.headers["set-cookie"]),
+        payload: {
+          challengeToken,
+          code: "123456",
+          unexpected: "field",
+        },
+      });
+
+      expect(response.statusCode).toBe(422);
+      expect(response.json()).toMatchObject({
+        code: "validation_error",
+      });
+
+      await api.close();
+    },
+    AUTH_ROUTE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "rejects unexpected bodies on authenticated no-body mutation routes",
+    async () => {
+      const api = buildApi({ runtime, authService: authn });
+      const customerLoginIdentifier = `logout-validation+${randomUUID()}@vision.test`;
+      await seedSubject("customer", customerLoginIdentifier, "S3cure-password!");
+
+      const customerLogin = await api.inject({
+        method: "POST",
+        url: "/auth/customer/login",
+        payload: {
+          loginIdentifier: customerLoginIdentifier,
+          password: "S3cure-password!",
+        },
+      });
+      createdSessionIds.push(
+        (customerLogin.json() as { session: { sessionId: string } }).session.sessionId,
+      );
+
+      const logoutResponse = await api.inject({
+        method: "POST",
+        url: "/auth/logout",
+        headers: buildAuthenticatedMutationHeaders(customerLogin.headers["set-cookie"]),
+        payload: {
+          unexpected: "field",
+        },
+      });
+
+      expect(logoutResponse.statusCode).toBe(422);
+      expect(logoutResponse.json()).toMatchObject({
+        code: "validation_error",
+      });
+
+      const internalLoginIdentifier = `backup-validation+${randomUUID()}@vision.test`;
+      const session = await createMfaVerifiedInternalSession(api, {
+        loginIdentifier: internalLoginIdentifier,
+        internalSensitivity: "branch_manager",
+      });
+
+      const backupCodesResponse = await api.inject({
+        method: "POST",
+        url: "/auth/internal/mfa/backup-codes/regenerate",
+        headers: buildAuthenticatedMutationHeaders(session.verify.headers["set-cookie"]),
+        payload: {
+          unexpected: "field",
+        },
+      });
+
+      expect(backupCodesResponse.statusCode).toBe(422);
+      expect(backupCodesResponse.json()).toMatchObject({
+        code: "validation_error",
+      });
+
+      await api.close();
+    },
+    AUTH_ROUTE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "returns 403 insufficient_assurance when backup-code regeneration is called without step-up",
+    async () => {
+      const api = buildApi({ runtime, authService: authn });
+      const loginIdentifier = `manager+${randomUUID()}@vision.test`;
+      const session = await createMfaVerifiedInternalSession(api, {
+        loginIdentifier,
+        internalSensitivity: "branch_manager",
+      });
 
       const response = await api.inject({
         method: "POST",
         url: "/auth/internal/mfa/backup-codes/regenerate",
-        headers: {
-          cookie,
-        },
+        headers: buildAuthenticatedMutationHeaders(session.verify.headers["set-cookie"]),
       });
 
       expect(response.statusCode).toBe(403);

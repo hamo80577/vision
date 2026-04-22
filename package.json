@@ -18,17 +18,17 @@
     "format": "prettier --write ."
   },
   "devDependencies": {
-    "@eslint/js": "latest",
-    "@types/node": "latest",
-    "drizzle-kit": "^0.31.10",
-    "eslint": "latest",
-    "pg": "^8.20.0",
-    "prettier": "latest",
-    "tsup": "latest",
-    "tsx": "latest",
-    "turbo": "latest",
-    "typescript": "latest",
-    "typescript-eslint": "latest",
-    "vitest": "latest"
+    "@eslint/js": "10.0.1",
+    "@types/node": "25.6.0",
+    "drizzle-kit": "0.31.10",
+    "eslint": "10.2.1",
+    "pg": "8.20.0",
+    "prettier": "3.8.3",
+    "tsup": "8.5.1",
+    "tsx": "4.21.0",
+    "turbo": "2.9.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.58.2",
+    "vitest": "4.1.4"
   }
 }

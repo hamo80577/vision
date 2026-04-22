@@ -1,5 +1,6 @@
 export const authnPackageName = "@vision/authn" as const;
 export { AuthnError, isAuthnError, type AuthnErrorCode } from "./errors";
+export { createCsrfToken, csrfTokensMatch } from "./csrf";
 export {
   compareAssuranceLevels,
   resolveAssuranceFailure,

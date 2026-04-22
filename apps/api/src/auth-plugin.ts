@@ -156,6 +156,52 @@ const authPluginImpl: FastifyPluginAsync<AuthPluginOptions> = async (
     }
   } as const;
 
+  const assuranceReasonSchema = {
+    type: "string",
+    enum: [
+      "tenant_context_switch",
+      "support_grant_activation",
+      "website_management_write",
+      "data_export",
+      "credential_reset"
+    ]
+  } as const;
+
+  const emptyMutationBodySchema = {
+    body: {
+      anyOf: [
+        {
+          type: "object",
+          additionalProperties: false,
+          maxProperties: 0
+        },
+        {
+          type: "null"
+        }
+      ]
+    }
+  } as const;
+
+  const challengeVerificationSchema = {
+    body: {
+      type: "object",
+      required: ["challengeToken"],
+      additionalProperties: false,
+      properties: {
+        challengeToken: { type: "string", minLength: 1 },
+        code: { type: "string", minLength: 1 },
+        backupCode: { type: "string", minLength: 1 }
+      },
+      anyOf: [{ required: ["code"] }, { required: ["backupCode"] }]
+    }
+  } as const;
+
+  const csrfProtectedConfig = {
+    config: {
+      csrfProtected: true
+    }
+  } as const;
+
   api.post("/auth/customer/login", { schema: loginSchema }, async (request, reply) => {
     try {
       const body = request.body as { loginIdentifier: string; password: string };
@@ -218,151 +264,218 @@ const authPluginImpl: FastifyPluginAsync<AuthPluginOptions> = async (
     }
   });
 
-  api.post("/auth/internal/mfa/enrollment/start", async (request) => {
-    try {
-      const body = request.body as { challengeToken: string; accountName: string };
-      return authService.startMfaEnrollment(body);
-    } catch (error) {
-      if (isAuthnError(error)) {
-        mapAuthnError(error);
+  api.post(
+    "/auth/internal/mfa/enrollment/start",
+    {
+      schema: {
+        body: {
+          type: "object",
+          required: ["challengeToken", "accountName"],
+          additionalProperties: false,
+          properties: {
+            challengeToken: { type: "string", minLength: 1 },
+            accountName: { type: "string", minLength: 1 }
+          }
+        }
+      }
+    },
+    async (request) => {
+      try {
+        const body = request.body as { challengeToken: string; accountName: string };
+        return authService.startMfaEnrollment(body);
+      } catch (error) {
+        if (isAuthnError(error)) {
+          mapAuthnError(error);
+        }
+
+        throw error;
+      }
+    }
+  );
+
+  api.post(
+    "/auth/internal/mfa/enrollment/verify",
+    {
+      schema: {
+        body: {
+          type: "object",
+          required: ["challengeToken", "code"],
+          additionalProperties: false,
+          properties: {
+            challengeToken: { type: "string", minLength: 1 },
+            code: { type: "string", minLength: 1 }
+          }
+        }
+      }
+    },
+    async (request, reply) => {
+      try {
+        const body = request.body as { challengeToken: string; code: string };
+        const result = await authService.verifyMfaEnrollment(body);
+
+        setAuthCookie(reply, options.runtime.appEnv, result.sessionToken, result.session.expiresAt);
+        return {
+          subject: result.subject,
+          session: result.session,
+          backupCodes: result.backupCodes
+        };
+      } catch (error) {
+        if (isAuthnError(error)) {
+          mapAuthnError(error);
+        }
+
+        throw error;
+      }
+    }
+  );
+
+  api.post(
+    "/auth/internal/mfa/verify",
+    { schema: challengeVerificationSchema },
+    async (request, reply) => {
+      try {
+        const body = request.body as {
+          challengeToken: string;
+          code?: string;
+          backupCode?: string;
+        };
+        const result = await authService.verifyMfaChallenge({
+          challengeToken: body.challengeToken,
+          totpCode: body.code,
+          backupCode: body.backupCode
+        });
+
+        setAuthCookie(reply, options.runtime.appEnv, result.sessionToken, result.session.expiresAt);
+        return {
+          subject: result.subject,
+          session: result.session
+        };
+      } catch (error) {
+        if (isAuthnError(error)) {
+          mapAuthnError(error);
+        }
+
+        throw error;
+      }
+    }
+  );
+
+  api.post(
+    "/auth/internal/assurance/step-up/start",
+    {
+      ...csrfProtectedConfig,
+      schema: {
+        body: {
+          type: "object",
+          required: ["reason"],
+          additionalProperties: false,
+          properties: {
+            reason: assuranceReasonSchema
+          }
+        }
+      }
+    },
+    async (request) => {
+      requireAuthenticatedRequest(request);
+      const token = readAuthCookie(request);
+
+      if (!token) {
+        throw createUnauthenticatedProblem("Authentication required.");
       }
 
-      throw error;
+      try {
+        const body = request.body as { reason: string };
+        return await authService.startStepUpChallenge({
+          token,
+          reason: body.reason as
+            | "tenant_context_switch"
+            | "support_grant_activation"
+            | "website_management_write"
+            | "data_export"
+            | "credential_reset"
+        });
+      } catch (error) {
+        if (isAuthnError(error)) {
+          mapAuthnError(error);
+        }
+
+        throw error;
+      }
     }
-  });
+  );
 
-  api.post("/auth/internal/mfa/enrollment/verify", async (request, reply) => {
-    try {
-      const body = request.body as { challengeToken: string; code: string };
-      const result = await authService.verifyMfaEnrollment(body);
+  api.post(
+    "/auth/internal/assurance/step-up/verify",
+    {
+      ...csrfProtectedConfig,
+      schema: challengeVerificationSchema
+    },
+    async (request) => {
+      requireAuthenticatedRequest(request);
+      const token = readAuthCookie(request);
 
-      setAuthCookie(reply, options.runtime.appEnv, result.sessionToken, result.session.expiresAt);
-      return {
-        subject: result.subject,
-        session: result.session,
-        backupCodes: result.backupCodes
-      };
-    } catch (error) {
-      if (isAuthnError(error)) {
-        mapAuthnError(error);
+      if (!token) {
+        throw createUnauthenticatedProblem("Authentication required.");
       }
 
-      throw error;
+      try {
+        const body = request.body as {
+          challengeToken: string;
+          code?: string;
+          backupCode?: string;
+        };
+        const result = await authService.verifyStepUpChallenge({
+          token,
+          challengeToken: body.challengeToken,
+          totpCode: body.code,
+          backupCode: body.backupCode
+        });
+
+        return {
+          subject: result.subject,
+          session: result.session
+        };
+      } catch (error) {
+        if (isAuthnError(error)) {
+          mapAuthnError(error);
+        }
+
+        throw error;
+      }
     }
-  });
+  );
 
-  api.post("/auth/internal/mfa/verify", async (request, reply) => {
-    try {
-      const body = request.body as {
-        challengeToken: string;
-        code?: string;
-        backupCode?: string;
-      };
-      const result = await authService.verifyMfaChallenge({
-        challengeToken: body.challengeToken,
-        totpCode: body.code,
-        backupCode: body.backupCode
-      });
+  api.post(
+    "/auth/internal/mfa/backup-codes/regenerate",
+    {
+      ...csrfProtectedConfig,
+      schema: emptyMutationBodySchema
+    },
+    async (request) => {
+      requireAuthenticatedRequest(request);
+      const token = readAuthCookie(request);
 
-      setAuthCookie(reply, options.runtime.appEnv, result.sessionToken, result.session.expiresAt);
-      return {
-        subject: result.subject,
-        session: result.session
-      };
-    } catch (error) {
-      if (isAuthnError(error)) {
-        mapAuthnError(error);
+      if (!token) {
+        throw createUnauthenticatedProblem("Authentication required.");
       }
 
-      throw error;
-    }
-  });
+      try {
+        const backupCodes = await authService.regenerateBackupCodes({ token });
+        return { backupCodes };
+      } catch (error) {
+        if (isAuthnError(error)) {
+          mapAuthnError(error);
+        }
 
-  api.post("/auth/internal/assurance/step-up/start", async (request) => {
-    requireAuthenticatedRequest(request);
-    const token = readAuthCookie(request);
-
-    if (!token) {
-      throw createUnauthenticatedProblem("Authentication required.");
-    }
-
-    try {
-      const body = request.body as { reason: string };
-      return await authService.startStepUpChallenge({
-        token,
-        reason: body.reason as
-          | "tenant_context_switch"
-          | "support_grant_activation"
-          | "website_management_write"
-          | "data_export"
-          | "credential_reset"
-      });
-    } catch (error) {
-      if (isAuthnError(error)) {
-        mapAuthnError(error);
+        throw error;
       }
-
-      throw error;
     }
-  });
-
-  api.post("/auth/internal/assurance/step-up/verify", async (request) => {
-    requireAuthenticatedRequest(request);
-    const token = readAuthCookie(request);
-
-    if (!token) {
-      throw createUnauthenticatedProblem("Authentication required.");
-    }
-
-    try {
-      const body = request.body as {
-        challengeToken: string;
-        code?: string;
-        backupCode?: string;
-      };
-      const result = await authService.verifyStepUpChallenge({
-        token,
-        challengeToken: body.challengeToken,
-        totpCode: body.code,
-        backupCode: body.backupCode
-      });
-
-      return {
-        subject: result.subject,
-        session: result.session
-      };
-    } catch (error) {
-      if (isAuthnError(error)) {
-        mapAuthnError(error);
-      }
-
-      throw error;
-    }
-  });
-
-  api.post("/auth/internal/mfa/backup-codes/regenerate", async (request) => {
-    requireAuthenticatedRequest(request);
-    const token = readAuthCookie(request);
-
-    if (!token) {
-      throw createUnauthenticatedProblem("Authentication required.");
-    }
-
-    try {
-      const backupCodes = await authService.regenerateBackupCodes({ token });
-      return { backupCodes };
-    } catch (error) {
-      if (isAuthnError(error)) {
-        mapAuthnError(error);
-      }
-
-      throw error;
-    }
-  });
+  );
 
   api.post(
     "/auth/internal/context/branch/switch",
     {
+      ...csrfProtectedConfig,
       schema: {
         body: {
           type: "object",
@@ -442,6 +555,7 @@ const authPluginImpl: FastifyPluginAsync<AuthPluginOptions> = async (
           ? await authService.switchActiveBranchContext({
               token,
               activeTenantId: tenancy.activeTenantId,
+              allowedBranchIds: tenancy.access.allowedBranchIds,
               nextBranchId: targetBranchId
             })
           : auth;
@@ -475,29 +589,36 @@ const authPluginImpl: FastifyPluginAsync<AuthPluginOptions> = async (
     }
   });
 
-  api.post("/auth/logout", async (request, reply) => {
-    const token = readAuthCookie(request);
+  api.post(
+    "/auth/logout",
+    {
+      ...csrfProtectedConfig,
+      schema: emptyMutationBodySchema
+    },
+    async (request, reply) => {
+      const token = readAuthCookie(request);
 
-    if (!token) {
-      clearAuthCookie(reply, options.runtime.appEnv);
-      throw createUnauthenticatedProblem("Authentication required.");
-    }
-
-    try {
-      await authService.logout({ token });
-      clearAuthCookie(reply, options.runtime.appEnv);
-      reply.code(204);
-      return reply.send();
-    } catch (error) {
-      clearAuthCookie(reply, options.runtime.appEnv);
-
-      if (isAuthnError(error)) {
-        mapAuthnError(error);
+      if (!token) {
+        clearAuthCookie(reply, options.runtime.appEnv);
+        throw createUnauthenticatedProblem("Authentication required.");
       }
 
-      throw error;
+      try {
+        await authService.logout({ token });
+        clearAuthCookie(reply, options.runtime.appEnv);
+        reply.code(204);
+        return reply.send();
+      } catch (error) {
+        clearAuthCookie(reply, options.runtime.appEnv);
+
+        if (isAuthnError(error)) {
+          mapAuthnError(error);
+        }
+
+        throw error;
+      }
     }
-  });
+  );
 };
 
 export const authPlugin = fp(authPluginImpl, {

@@ -30,3 +30,5 @@ Tenant-scoped DB work must set `vision.tenant_id` before querying protected tabl
 ## Non-Goals
 
 Application services may still carry richer tenancy state, but the database policy contract depends only on `vision.tenant_id`.
+
+The branch-switch HTTP route remains responsible for tenancy resolution and authorization. The auth service now also rejects switch targets that are not present in the caller-provided allowed-branch snapshot, so accidental reuse of the persistence method cannot silently move a session into an unauthorized branch.

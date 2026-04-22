@@ -827,10 +827,14 @@ export function createAuthnService(
     async switchActiveBranchContext(input: {
       token: string;
       activeTenantId: string;
+      allowedBranchIds: readonly string[];
       nextBranchId: string;
     }) {
       const resolution = await this.resolveSession({ token: input.token });
       const activeTenantId = input.activeTenantId.trim();
+      const allowedBranchIds = input.allowedBranchIds
+        .map((branchId) => branchId.trim())
+        .filter((branchId) => branchId.length > 0);
       const nextBranchId = input.nextBranchId.trim();
 
       if (!activeTenantId || !nextBranchId) {
@@ -843,6 +847,10 @@ export function createAuthnService(
 
       if (resolution.session.activeTenantId !== activeTenantId) {
         throw new AuthnError("invalid_session_token");
+      }
+
+      if (!allowedBranchIds.includes(nextBranchId)) {
+        throw new AuthnError("invalid_session_context");
       }
 
       const previousBranchId = resolution.session.activeBranchId;
