@@ -13,6 +13,16 @@ export type ProblemCode =
   | "insufficient_scope"
   | "self_access_only"
   | "explicit_deny"
+  | "unsupported_execution_surface"
+  | "unsupported_tenancy_scope"
+  | "platform_tenant_execution_disabled"
+  | "missing_active_tenant_context"
+  | "missing_active_branch_context"
+  | "tenant_intent_mismatch"
+  | "branch_intent_mismatch"
+  | "invalid_branch_switch_target"
+  | "branch_not_in_active_tenant_scope"
+  | "tenant_db_context_required"
   | "not_found"
   | "conflict";
 

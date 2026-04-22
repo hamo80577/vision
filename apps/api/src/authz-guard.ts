@@ -45,7 +45,19 @@ function deriveDefaultActorClaims(auth: AuthResolution): AuthorizationActorClaim
   };
 }
 
-function deriveSessionContextFacts(auth: AuthResolution): AuthorizationContextFacts {
+function deriveSessionContextFacts(
+  request: FastifyRequest,
+  auth: AuthResolution,
+): AuthorizationContextFacts {
+  if (request.tenancy) {
+    return {
+      activeTenantId: request.tenancy.activeTenantId,
+      activeBranchId: request.tenancy.activeBranchId ?? undefined,
+      targetTenantId: request.tenancy.targetTenantId,
+      targetBranchId: request.tenancy.targetBranchId ?? undefined,
+    };
+  }
+
   return {
     activeTenantId: auth.session.activeTenantId ?? undefined,
     activeBranchId: auth.session.activeBranchId ?? undefined
@@ -60,7 +72,7 @@ export function createAuthorizationGuard(options: AuthorizationGuardOptions) {
     const routeContext = options.getContextFacts(request, auth);
     const context = {
       ...routeContext,
-      ...deriveSessionContextFacts(auth)
+      ...deriveSessionContextFacts(request, auth)
     };
     const decision = authorize({
       actor,

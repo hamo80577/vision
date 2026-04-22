@@ -12,7 +12,10 @@ import {
 } from "@vision/observability";
 
 import "./fastify-types";
-import { authPlugin } from "./auth-plugin";
+import {
+  authPlugin,
+  type ResolveInternalTenancyAccess
+} from "./auth-plugin";
 import { mapApiErrorToProblem } from "./http-errors";
 import { createApiRequestContext } from "./request-context";
 import { getApiRuntimeConfig, type ApiRuntimeConfig } from "./runtime";
@@ -22,6 +25,7 @@ export type ApiBuildDependencies = {
   logger: VisionLogger;
   tracer: ObservabilityTracer;
   authService: AuthnService;
+  resolveInternalTenancyAccess: ResolveInternalTenancyAccess;
 };
 
 const REQUEST_ID_HEADER = "x-request-id";
@@ -254,6 +258,7 @@ export function buildApi(
   api.decorateRequest("observabilityContext", null);
   api.decorateRequest("requestLogger", null);
   api.decorateRequest("requestStartedAt", null);
+  api.decorateRequest("tenancy", null);
 
   api.addHook("onRequest", async (request, reply) => {
     request.requestStartedAt = Date.now();
@@ -337,7 +342,8 @@ export function buildApi(
 
   api.register(authPlugin, {
     runtime,
-    authService: overrides.authService
+    authService: overrides.authService,
+    resolveInternalTenancyAccess: overrides.resolveInternalTenancyAccess
   });
 
   return api;

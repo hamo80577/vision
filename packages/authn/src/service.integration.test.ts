@@ -371,4 +371,148 @@ describe("createAuthnService", () => {
     },
     AUTHN_INTEGRATION_TIMEOUT_MS,
   );
+
+  it(
+    "does not persist or audit when switching to the current active branch",
+    async () => {
+      const loginIdentifier = `branch-noop+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!", "none");
+
+      const login = await authn.login({
+        subjectType: "internal",
+        loginIdentifier,
+        password: "S3cure-password!",
+      });
+
+      if (login.kind !== "session") {
+        throw new Error("Expected session login result.");
+      }
+
+      createdSessionIds.push(login.session.sessionId);
+
+      await db
+        .update(authSessions)
+        .set({
+          activeTenantId: "tenant_1",
+          activeBranchId: "branch_1",
+        })
+        .where(eq(authSessions.id, login.session.sessionId));
+
+      const switched = await authn.switchActiveBranchContext({
+        token: login.sessionToken,
+        activeTenantId: "tenant_1",
+        nextBranchId: "branch_1",
+      });
+
+      expect(switched.session.activeTenantId).toBe("tenant_1");
+      expect(switched.session.activeBranchId).toBe("branch_1");
+
+      const events = await db
+        .select()
+        .from(authAccountEvents)
+        .where(eq(authAccountEvents.sessionId, login.session.sessionId));
+
+      expect(events.find((entry) => entry.eventType === "branch_context_switched")).toBeUndefined();
+    },
+    AUTHN_INTEGRATION_TIMEOUT_MS,
+  );
+
+  it(
+    "rejects empty branch switch targets before persistence",
+    async () => {
+      const loginIdentifier = `branch-empty+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!", "none");
+
+      const login = await authn.login({
+        subjectType: "internal",
+        loginIdentifier,
+        password: "S3cure-password!",
+      });
+
+      if (login.kind !== "session") {
+        throw new Error("Expected session login result.");
+      }
+
+      createdSessionIds.push(login.session.sessionId);
+
+      await db
+        .update(authSessions)
+        .set({
+          activeTenantId: "tenant_1",
+          activeBranchId: "branch_1",
+        })
+        .where(eq(authSessions.id, login.session.sessionId));
+
+      await expect(
+        authn.switchActiveBranchContext({
+          token: login.sessionToken,
+          activeTenantId: "tenant_1",
+          nextBranchId: "   ",
+        }),
+      ).rejects.toMatchObject({
+        code: "invalid_session_context",
+      });
+
+      const [session] = await db
+        .select()
+        .from(authSessions)
+        .where(eq(authSessions.id, login.session.sessionId));
+      const events = await db
+        .select()
+        .from(authAccountEvents)
+        .where(eq(authAccountEvents.sessionId, login.session.sessionId));
+
+      expect(session?.activeBranchId).toBe("branch_1");
+      expect(events.find((entry) => entry.eventType === "branch_context_switched")).toBeUndefined();
+    },
+    AUTHN_INTEGRATION_TIMEOUT_MS,
+  );
+
+  it(
+    "switches the active branch for an internal session and writes an audit event",
+    async () => {
+      const loginIdentifier = `branch-switch+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!", "none");
+
+      const login = await authn.login({
+        subjectType: "internal",
+        loginIdentifier,
+        password: "S3cure-password!",
+      });
+
+      if (login.kind !== "session") {
+        throw new Error("Expected session login result.");
+      }
+
+      createdSessionIds.push(login.session.sessionId);
+
+      await db
+        .update(authSessions)
+        .set({
+          activeTenantId: "tenant_1",
+          activeBranchId: "branch_1",
+        })
+        .where(eq(authSessions.id, login.session.sessionId));
+
+      const switched = await authn.switchActiveBranchContext({
+        token: login.sessionToken,
+        activeTenantId: "tenant_1",
+        nextBranchId: "branch_2",
+      });
+
+      expect(switched.session.activeTenantId).toBe("tenant_1");
+      expect(switched.session.activeBranchId).toBe("branch_2");
+
+      const events = await db
+        .select()
+        .from(authAccountEvents)
+        .where(eq(authAccountEvents.sessionId, login.session.sessionId));
+      const event = events.find((entry) => entry.eventType === "branch_context_switched");
+
+      expect(event?.eventType).toBe("branch_context_switched");
+      expect(event?.detail).toContain("branch_1");
+      expect(event?.detail).toContain("branch_2");
+    },
+    AUTHN_INTEGRATION_TIMEOUT_MS,
+  );
 });

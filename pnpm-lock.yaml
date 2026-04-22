@@ -65,6 +65,9 @@ importers:
       '@vision/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@vision/tenancy':
+        specifier: workspace:*
+        version: link:../../packages/tenancy
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.20.0)(pg@8.20.0)
@@ -179,6 +182,9 @@ importers:
       '@vision/config':
         specifier: workspace:*
         version: link:../config
+      '@vision/tenancy':
+        specifier: workspace:*
+        version: link:../tenancy
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.20.0)(pg@8.20.0)

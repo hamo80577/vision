@@ -1,0 +1,1 @@
+ALTER TYPE "public"."auth_account_event_type" ADD VALUE 'branch_context_switched';

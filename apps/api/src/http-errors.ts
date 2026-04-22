@@ -1,6 +1,7 @@
 import { STATUS_CODES } from "node:http";
 
 import { AuthzError, isAuthzError } from "@vision/authz";
+import { TenancyError, isTenancyError } from "@vision/tenancy";
 import type { FastifyRequest } from "fastify";
 
 import {
@@ -130,6 +131,45 @@ function createAuthzProblem(
   };
 }
 
+function createTenancyProblem(
+  error: TenancyError,
+  request: FastifyRequest,
+  context: ObservabilityContext
+): ApiProblemResult {
+  if (
+    error.code === "tenant_db_context_required" ||
+    error.code === "unsupported_tenancy_scope"
+  ) {
+    const definition = getProblemDefinitionForStatus(500);
+
+    return {
+      statusCode: definition.status,
+      problem: createProblemDetails({
+        type: definition.type,
+        title: definition.title,
+        status: definition.status,
+        code: error.code,
+        detail: "An unexpected error occurred.",
+        instance: getRequestInstance(request),
+        traceId: context.traceId
+      })
+    };
+  }
+
+  return {
+    statusCode: 403,
+    problem: createProblemDetails({
+      type: "https://vision.local/problems/forbidden",
+      title: "Forbidden",
+      status: 403,
+      code: error.code,
+      detail: "Forbidden",
+      instance: getRequestInstance(request),
+      traceId: context.traceId
+    })
+  };
+}
+
 function createValidationProblem(
   error: FastifyValidationError,
   request: FastifyRequest,
@@ -200,6 +240,10 @@ export function mapApiErrorToProblem(
   request: FastifyRequest,
   context: ObservabilityContext
 ): ApiProblemResult {
+  if (isTenancyError(error)) {
+    return createTenancyProblem(error, request, context);
+  }
+
   if (isAuthzError(error)) {
     return createAuthzProblem(error, request, context);
   }

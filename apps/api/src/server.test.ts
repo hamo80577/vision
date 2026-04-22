@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ProblemError, createLogger } from "@vision/observability";
+import { TenancyError } from "@vision/tenancy";
 
 import { buildApi } from "./server";
 
@@ -423,6 +424,33 @@ describe("buildApi", () => {
     });
     expect(response.body).not.toContain("database password leaked");
     expect(response.body).not.toContain("secret");
+
+    await api.close();
+  });
+
+  it("treats tenant DB context failures as internal 500 errors, not forbidden responses", async () => {
+    const api = buildApi({
+      runtime
+    });
+
+    api.get("/db-context", async () => {
+      throw new TenancyError("tenant_db_context_required");
+    });
+
+    const response = await api.inject({
+      method: "GET",
+      url: "/db-context"
+    });
+
+    expect(response.statusCode).toBe(500);
+    expect(response.json()).toEqual({
+      type: "https://vision.local/problems/internal-error",
+      title: "Internal Server Error",
+      status: 500,
+      code: "tenant_db_context_required",
+      detail: "An unexpected error occurred.",
+      instance: "/db-context"
+    });
 
     await api.close();
   });

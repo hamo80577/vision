@@ -13,6 +13,8 @@ Application boundaries:
 Package boundaries:
 
 - Shared packages expose reusable primitives only.
+- `packages/tenancy` owns trusted ERP execution-context resolution.
+- `packages/db` may apply trusted DB access context, but must not become a policy engine.
 - Apps must not import from other apps.
 - Backend route handlers must not become business logic containers.
 - Product workflows must be implemented in the proper roadmap phase.

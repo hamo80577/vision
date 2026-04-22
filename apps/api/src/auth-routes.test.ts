@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 
 import { eq } from "drizzle-orm";
 import { inArray } from "drizzle-orm";
+import type { FastifyRequest } from "fastify";
 import * as OTPAuth from "otpauth";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  type AuthResolution,
   createAuthnService,
   hashPassword,
   normalizeLoginIdentifier,
@@ -19,6 +21,7 @@ import {
   createDatabasePool,
   getDatabaseRuntimeConfig,
 } from "@vision/db";
+import type { ActiveTenantAccessSnapshot } from "@vision/tenancy";
 
 import { AUTH_SESSION_COOKIE_NAME } from "./auth-cookie";
 import { buildApi } from "./server";
@@ -60,6 +63,19 @@ function getAuthCookie(setCookie: string | string[] | undefined): string {
   }
 
   return raw.split(";")[0] ?? raw;
+}
+
+function buildApiWithTenancyAccess(
+  resolveInternalTenancyAccess: (
+    request: FastifyRequest,
+    auth: AuthResolution,
+  ) => ActiveTenantAccessSnapshot | null,
+) {
+  return buildApi({
+    runtime,
+    authService: authn,
+    resolveInternalTenancyAccess,
+  });
 }
 
 async function seedSubject(
@@ -111,6 +127,208 @@ describe("auth routes", () => {
   afterAll(async () => {
     await closeDatabasePool(pool);
   });
+
+  it(
+    "switches branch context through the dedicated route and writes one audit event",
+    async () => {
+      const api = buildApiWithTenancyAccess(() => ({
+        tenantId: "tenant_1",
+        tenantRole: "branch_manager",
+        allowedBranchIds: ["branch_1", "branch_2"],
+      }));
+      const loginIdentifier = `switch-route+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!", "none");
+
+      const login = await api.inject({
+        method: "POST",
+        url: "/auth/internal/login",
+        payload: {
+          loginIdentifier,
+          password: "S3cure-password!",
+        },
+      });
+
+      const cookie = getAuthCookie(login.headers["set-cookie"]);
+      const sessionId = cookie.replace(`${AUTH_SESSION_COOKIE_NAME}=`, "").split(".")[0] ?? "";
+      createdSessionIds.push(sessionId);
+
+      await db
+        .update(authSessions)
+        .set({
+          activeTenantId: "tenant_1",
+          activeBranchId: "branch_1",
+        })
+        .where(eq(authSessions.id, sessionId));
+
+      const response = await api.inject({
+        method: "POST",
+        url: "/auth/internal/context/branch/switch",
+        headers: {
+          cookie,
+        },
+        payload: {
+          branchId: "branch_2",
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        session: {
+          activeTenantId: "tenant_1",
+          activeBranchId: "branch_2",
+        },
+        branchSwitch: {
+          requested: true,
+          persisted: true,
+          previousBranchId: "branch_1",
+          nextBranchId: "branch_2",
+        },
+      });
+
+      const events = await db
+        .select()
+        .from(authAccountEvents)
+        .where(eq(authAccountEvents.sessionId, sessionId));
+
+      expect(
+        events.filter((entry) => entry.eventType === "branch_context_switched"),
+      ).toHaveLength(1);
+
+      await api.close();
+    },
+    AUTH_ROUTE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "returns an idempotent no-op when switching to the current branch",
+    async () => {
+      const api = buildApiWithTenancyAccess(() => ({
+        tenantId: "tenant_1",
+        tenantRole: "branch_manager",
+        allowedBranchIds: ["branch_1", "branch_2"],
+      }));
+      const loginIdentifier = `switch-noop+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!", "none");
+
+      const login = await api.inject({
+        method: "POST",
+        url: "/auth/internal/login",
+        payload: {
+          loginIdentifier,
+          password: "S3cure-password!",
+        },
+      });
+
+      const cookie = getAuthCookie(login.headers["set-cookie"]);
+      const sessionId = cookie.replace(`${AUTH_SESSION_COOKIE_NAME}=`, "").split(".")[0] ?? "";
+      createdSessionIds.push(sessionId);
+
+      await db
+        .update(authSessions)
+        .set({
+          activeTenantId: "tenant_1",
+          activeBranchId: "branch_1",
+        })
+        .where(eq(authSessions.id, sessionId));
+
+      const response = await api.inject({
+        method: "POST",
+        url: "/auth/internal/context/branch/switch",
+        headers: {
+          cookie,
+        },
+        payload: {
+          branchId: "branch_1",
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        session: {
+          activeTenantId: "tenant_1",
+          activeBranchId: "branch_1",
+        },
+        branchSwitch: {
+          requested: true,
+          persisted: false,
+          previousBranchId: "branch_1",
+          nextBranchId: "branch_1",
+        },
+      });
+
+      const events = await db
+        .select()
+        .from(authAccountEvents)
+        .where(eq(authAccountEvents.sessionId, sessionId));
+
+      expect(
+        events.filter((entry) => entry.eventType === "branch_context_switched"),
+      ).toHaveLength(0);
+
+      await api.close();
+    },
+    AUTH_ROUTE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "fails closed when the branch switch target is outside the active tenant scope",
+    async () => {
+      const api = buildApiWithTenancyAccess(() => ({
+        tenantId: "tenant_1",
+        tenantRole: "branch_manager",
+        allowedBranchIds: ["branch_1"],
+      }));
+      const loginIdentifier = `switch-denied+${randomUUID()}@vision.test`;
+      await seedSubject("internal", loginIdentifier, "S3cure-password!", "none");
+
+      const login = await api.inject({
+        method: "POST",
+        url: "/auth/internal/login",
+        payload: {
+          loginIdentifier,
+          password: "S3cure-password!",
+        },
+      });
+
+      const cookie = getAuthCookie(login.headers["set-cookie"]);
+      const sessionId = cookie.replace(`${AUTH_SESSION_COOKIE_NAME}=`, "").split(".")[0] ?? "";
+      createdSessionIds.push(sessionId);
+
+      await db
+        .update(authSessions)
+        .set({
+          activeTenantId: "tenant_1",
+          activeBranchId: "branch_1",
+        })
+        .where(eq(authSessions.id, sessionId));
+
+      const response = await api.inject({
+        method: "POST",
+        url: "/auth/internal/context/branch/switch",
+        headers: {
+          cookie,
+        },
+        payload: {
+          branchId: "branch_2",
+        },
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({
+        code: "branch_not_in_active_tenant_scope",
+      });
+
+      const [session] = await db
+        .select()
+        .from(authSessions)
+        .where(eq(authSessions.id, sessionId));
+
+      expect(session?.activeBranchId).toBe("branch_1");
+
+      await api.close();
+    },
+    AUTH_ROUTE_TEST_TIMEOUT_MS,
+  );
 
   it(
     "logs in a customer and resolves the current session",

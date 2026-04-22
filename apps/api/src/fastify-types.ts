@@ -7,6 +7,7 @@ import type {
   ObservabilityContext,
   VisionLogger
 } from "@vision/observability";
+import type { ResolvedTenancyContext } from "@vision/tenancy";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -16,6 +17,7 @@ declare module "fastify" {
     requestStartedAt: number | null;
     auth: AuthResolution | null;
     authFailure: AuthnErrorCode | null;
+    tenancy: ResolvedTenancyContext | null;
   }
 }
 
