@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import { eq, inArray } from "drizzle-orm";
 import * as OTPAuth from "otpauth";
-import { Client } from "pg";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -56,19 +55,19 @@ function deriveRuntimeDatabaseUrl(databaseName: string): string {
 }
 
 async function expectRuntimeConnectionDenied(databaseName: string): Promise<void> {
-  const client = new Client({
-    connectionString: deriveRuntimeDatabaseUrl(databaseName),
+  const pool = createDatabasePool(deriveRuntimeDatabaseUrl(databaseName), {
+    max: 1,
   });
 
   try {
-    await client.connect();
+    await pool.query("select 1");
   } catch (error) {
     expect(error).toMatchObject({
       code: "42501",
     });
     return;
   } finally {
-    await client.end().catch(() => undefined);
+    await closeDatabasePool(pool).catch(() => undefined);
   }
 
   throw new Error(`Expected runtime role to be denied access to ${databaseName}`);
