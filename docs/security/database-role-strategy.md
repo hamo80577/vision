@@ -1,30 +1,31 @@
 # Database Role Strategy
 
-Vision distinguishes between runtime database access and admin database access.
+Vision distinguishes between runtime database access and admin/bootstrap database access.
 
 ## Runtime Access
 
-- `DATABASE_URL` is for application runtime access.
-- `DATABASE_URL` is also the connection Drizzle migrations use against the application database.
-- Runtime code must not assume superuser or schema-owner privileges.
-- Later phases will harden runtime privileges further.
+- `DATABASE_URL` is the application runtime connection string.
+- The runtime role is derived from `DATABASE_URL` and hardened to be non-superuser, with no `BYPASSRLS`, no database ownership, and least-privilege grants only.
+- Runtime code must never assume admin, schema-owner, or maintenance-database privileges.
+- Phase 9 runtime grants stay narrow and are intentionally separate from bootstrap privileges.
 
 ## Admin Access
 
-- `DATABASE_ADMIN_URL` is for maintenance and admin-only operations, especially reset drop/create against the `postgres` maintenance database.
+- `DATABASE_ADMIN_URL` is for maintenance and bootstrap operations, including reset, migration replay, grant application, and seeding.
 - `DATABASE_ADMIN_TARGET_DB` identifies the application database name that admin tooling should drop and recreate.
-- In local development it may use the same PostgreSQL role as runtime for practicality.
-- In every environment `DATABASE_ADMIN_URL` must target the `postgres` maintenance database, not the application database itself.
+- `DATABASE_ADMIN_URL` must target the `postgres` maintenance database, not the application database itself.
+- The admin role is separate from the runtime role and is only used for administrative paths.
 
 ## Boundary
 
-This split exists now so later phases can tighten privileges without reworking every script and config path.
+The split exists so bootstrap and reset tooling can stay powerful while the runtime connection stays least privilege and RLS-safe.
 
-## Transaction-Local Execution Context
+## Local Defaults
 
-Phase 8 adds transaction-local DB access-context propagation for tenant-scoped work.
+Local development uses distinct roles on the same PostgreSQL instance:
 
-- runtime code must set trusted `vision.tenant_id`
-- branch, subject, subject type, and session ID may also be set transaction-locally
-- the DB helper must fail closed when tenant context is missing
-- this helper is infrastructure only and does not replace tenancy resolution or authz
+- `DATABASE_URL=postgresql://vision_runtime:vision_runtime_password@localhost:5433/vision_local`
+- `DATABASE_ADMIN_URL=postgresql://vision_admin:vision_admin_password@localhost:5433/postgres`
+- `DATABASE_ADMIN_TARGET_DB=vision_local`
+
+The runtime and admin roles are intentionally different, even though both are local-only defaults.

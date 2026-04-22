@@ -7,16 +7,16 @@ services:
     ports:
       - "5433:5432"
     environment:
-      POSTGRES_DB: vision_local
-      POSTGRES_USER: vision_local
-      POSTGRES_PASSWORD: vision_local_password
+      POSTGRES_DB: postgres
+      POSTGRES_USER: vision_admin
+      POSTGRES_PASSWORD: vision_admin_password
     volumes:
-      - vision_postgres_data:/var/lib/postgresql/data
+      - vision_phase_9_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vision_local -d vision_local"]
+      test: ["CMD-SHELL", "pg_isready -U vision_admin -d postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
 
 volumes:
-  vision_postgres_data:
+  vision_phase_9_postgres_data:

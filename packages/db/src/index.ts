@@ -12,6 +12,10 @@ export {
   type DatabaseAdminConfig,
   type DatabaseRuntimeConfig,
 } from "./config";
+export {
+  deriveAdminTargetDatabaseUrl,
+  parseDatabaseRoleCredentials,
+} from "./role-hardening";
 export { checkDatabaseHealth } from "./health";
 export {
   applyDatabaseAccessContext,
@@ -25,5 +29,6 @@ export {
   authMfaTotpFactors,
   authSessions,
   authSubjects,
+  tenantRlsProbes,
 } from "./schema";
 export { withDatabaseTransaction } from "./transactions";
