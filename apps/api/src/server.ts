@@ -16,6 +16,7 @@ import {
   authPlugin,
   type ResolveInternalTenancyAccess
 } from "./auth-plugin";
+import { createCsrfProtectionHook } from "./csrf-protection";
 import { mapApiErrorToProblem } from "./http-errors";
 import { createApiRequestContext } from "./request-context";
 import { getApiRuntimeConfig, type ApiRuntimeConfig } from "./runtime";
@@ -251,7 +252,12 @@ export function buildApi(
     });
   const tracer = overrides.tracer ?? createNoopTracer();
   const api = Fastify({
-    logger: false
+    logger: false,
+    ajv: {
+      customOptions: {
+        removeAdditional: false
+      }
+    }
   });
 
   api.decorateRequest("activeTrace", null);
@@ -287,6 +293,8 @@ export function buildApi(
 
     return payload;
   });
+
+  api.addHook("preHandler", createCsrfProtectionHook());
 
   api.addHook("onResponse", async (request, reply) => {
     const context =

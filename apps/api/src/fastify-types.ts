@@ -10,6 +10,10 @@ import type {
 import type { ResolvedTenancyContext } from "@vision/tenancy";
 
 declare module "fastify" {
+  interface FastifyContextConfig {
+    csrfProtected?: boolean;
+  }
+
   interface FastifyRequest {
     activeTrace: ActiveTrace | null;
     observabilityContext: ObservabilityContext | null;
