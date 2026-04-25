@@ -1,3 +1,4 @@
+import fastifyCors from "@fastify/cors";
 import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 
 import type { AuthnService } from "@vision/authn";
@@ -8,16 +9,17 @@ import {
   sanitizeProblemInstance,
   serializeErrorForLog,
   type ObservabilityTracer,
-  type VisionLogger
+  type VisionLogger,
 } from "@vision/observability";
 
 import "./fastify-types";
-import {
-  authPlugin,
-  type ResolveInternalTenancyAccess
-} from "./auth-plugin";
+import { authPlugin, type ResolveInternalTenancyAccess } from "./auth-plugin";
 import { createCsrfProtectionHook } from "./csrf-protection";
 import { mapApiErrorToProblem } from "./http-errors";
+import { ownerActivationPlugin } from "./modules/owner-activation/plugin";
+import type { OwnerActivationService } from "./modules/owner-activation/service";
+import { platformProvisioningPlugin } from "./modules/platform-provisioning/plugin";
+import type { PlatformProvisioningService } from "./modules/platform-provisioning/service";
 import { createApiRequestContext } from "./request-context";
 import { getApiRuntimeConfig, type ApiRuntimeConfig } from "./runtime";
 
@@ -27,17 +29,36 @@ export type ApiBuildDependencies = {
   tracer: ObservabilityTracer;
   authService: AuthnService;
   resolveInternalTenancyAccess: ResolveInternalTenancyAccess;
+  ownerActivationService: OwnerActivationService;
+  platformProvisioningService: PlatformProvisioningService;
 };
 
 const REQUEST_ID_HEADER = "x-request-id";
 const CORRELATION_ID_HEADER = "x-correlation-id";
+const DEFAULT_LOCAL_ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:3001",
+  "http://127.0.0.1:3001",
+  "http://localhost:3002",
+  "http://127.0.0.1:3002",
+] as const;
 
 type ProtectedContext = ReturnType<typeof createApiRequestContext>;
 
-function getProtectedHeaderValue(
-  name: string,
-  context: ProtectedContext
-): string | undefined {
+function getAllowedOrigins(runtime: ApiRuntimeConfig): readonly string[] {
+  if (runtime.allowedOrigins && runtime.allowedOrigins.length > 0) {
+    return runtime.allowedOrigins;
+  }
+
+  if (runtime.appEnv === "local" || runtime.appEnv === "test") {
+    return DEFAULT_LOCAL_ALLOWED_ORIGINS;
+  }
+
+  return [];
+}
+
+function getProtectedHeaderValue(name: string, context: ProtectedContext): string | undefined {
   const normalizedName = name.toLowerCase();
 
   if (normalizedName === REQUEST_ID_HEADER) {
@@ -53,18 +74,18 @@ function getProtectedHeaderValue(
 
 function applyProtectedHeadersToHeaderRecord(
   headers: Record<string, unknown>,
-  context: ProtectedContext
+  context: ProtectedContext,
 ): Record<string, unknown> {
   return {
     ...headers,
     [REQUEST_ID_HEADER]: context.requestId,
-    [CORRELATION_ID_HEADER]: context.correlationId
+    [CORRELATION_ID_HEADER]: context.correlationId,
   };
 }
 
 function applyProtectedHeadersToRawHeaderPairs(
   headers: readonly unknown[],
-  context: ProtectedContext
+  context: ProtectedContext,
 ): unknown[] {
   const nextHeaders = [...headers];
   let sawRequestId = false;
@@ -106,17 +127,14 @@ function applyProtectedHeadersToRawHeaderPairs(
 
 function applyProtectedHeadersToWriteHeadArgument(
   headers: unknown,
-  context: ProtectedContext
+  context: ProtectedContext,
 ): unknown {
   if (Array.isArray(headers)) {
     return applyProtectedHeadersToRawHeaderPairs(headers, context);
   }
 
   if (headers && typeof headers === "object") {
-    return applyProtectedHeadersToHeaderRecord(
-      headers as Record<string, unknown>,
-      context
-    );
+    return applyProtectedHeadersToHeaderRecord(headers as Record<string, unknown>, context);
   }
 
   return headers;
@@ -124,7 +142,7 @@ function applyProtectedHeadersToWriteHeadArgument(
 
 function applyProtectedHeadersToIterable(
   headers: Headers | Map<string, number | string | readonly string[]>,
-  context: ProtectedContext
+  context: ProtectedContext,
 ): Headers | Map<string, number | string | readonly string[]> {
   if (headers instanceof Headers) {
     const nextHeaders = new Headers(headers);
@@ -141,18 +159,12 @@ function applyProtectedHeadersToIterable(
   return nextHeaders;
 }
 
-function applyResponseContextHeaders(
-  reply: FastifyReply,
-  context: ProtectedContext
-): void {
+function applyResponseContextHeaders(reply: FastifyReply, context: ProtectedContext): void {
   reply.header(REQUEST_ID_HEADER, context.requestId);
   reply.header(CORRELATION_ID_HEADER, context.correlationId);
 }
 
-function protectResponseContextHeaders(
-  reply: FastifyReply,
-  context: ProtectedContext
-): void {
+function protectResponseContextHeaders(reply: FastifyReply, context: ProtectedContext): void {
   type ReplyHeaders = NonNullable<Parameters<FastifyReply["headers"]>[0]>;
 
   const originalHeader = reply.header.bind(reply);
@@ -180,16 +192,12 @@ function protectResponseContextHeaders(
   }) as typeof reply.removeHeader;
 
   reply.headers = ((values: ReplyHeaders) => {
-    const nextValues = Object.entries(values).reduce<ReplyHeaders>(
-      (accumulator, [name, value]) => {
-        accumulator[name as keyof ReplyHeaders] = (
-          getProtectedHeaderValue(name, context) ?? value
-        ) as ReplyHeaders[keyof ReplyHeaders];
+    const nextValues = Object.entries(values).reduce<ReplyHeaders>((accumulator, [name, value]) => {
+      accumulator[name as keyof ReplyHeaders] = (getProtectedHeaderValue(name, context) ??
+        value) as ReplyHeaders[keyof ReplyHeaders];
 
-        return accumulator;
-      },
-      {}
-    );
+      return accumulator;
+    }, {});
 
     return originalHeaders(nextValues);
   }) as typeof reply.headers;
@@ -212,7 +220,9 @@ function protectResponseContextHeaders(
   }
 
   if (originalSetHeaders) {
-    reply.raw.setHeaders = ((headers: Headers | Map<string, number | string | readonly string[]>) => {
+    reply.raw.setHeaders = ((
+      headers: Headers | Map<string, number | string | readonly string[]>,
+    ) => {
       return originalSetHeaders(applyProtectedHeadersToIterable(headers, context));
     }) as typeof reply.raw.setHeaders;
   }
@@ -239,25 +249,23 @@ function protectResponseContextHeaders(
   }) as typeof reply.raw.writeHead;
 }
 
-export function buildApi(
-  overrides: Partial<ApiBuildDependencies> = {}
-): FastifyInstance {
+export function buildApi(overrides: Partial<ApiBuildDependencies> = {}): FastifyInstance {
   const runtime = overrides.runtime ?? getApiRuntimeConfig();
   const rootLogger =
     overrides.logger ??
     createLogger({
       service: runtime.serviceName,
       environment: runtime.appEnv,
-      level: runtime.logLevel
+      level: runtime.logLevel,
     });
   const tracer = overrides.tracer ?? createNoopTracer();
   const api = Fastify({
     logger: false,
     ajv: {
       customOptions: {
-        removeAdditional: false
-      }
-    }
+        removeAdditional: false,
+      },
+    },
   });
 
   api.decorateRequest("activeTrace", null);
@@ -266,6 +274,18 @@ export function buildApi(
   api.decorateRequest("requestStartedAt", null);
   api.decorateRequest("tenancy", null);
 
+  api.register(fastifyCors, {
+    credentials: true,
+    origin: (origin: string | undefined, callback: (error: Error | null, origin: boolean) => void) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      callback(null, getAllowedOrigins(runtime).includes(origin));
+    },
+  });
+
   api.addHook("onRequest", async (request, reply) => {
     request.requestStartedAt = Date.now();
 
@@ -273,7 +293,7 @@ export function buildApi(
     const activeTrace = tracer.startTrace("http.request");
     const context = activeTrace.traceId
       ? extendObservabilityContext(baseContext, {
-          traceId: activeTrace.traceId
+          traceId: activeTrace.traceId,
         })
       : baseContext;
 
@@ -286,8 +306,7 @@ export function buildApi(
   });
 
   api.addHook("onSend", async (request, reply, payload) => {
-    const context =
-      request.observabilityContext ?? createApiRequestContext(request, runtime);
+    const context = request.observabilityContext ?? createApiRequestContext(request, runtime);
 
     applyResponseContextHeaders(reply, context);
 
@@ -297,29 +316,24 @@ export function buildApi(
   api.addHook("preHandler", createCsrfProtectionHook());
 
   api.addHook("onResponse", async (request, reply) => {
-    const context =
-      request.observabilityContext ?? createApiRequestContext(request, runtime);
+    const context = request.observabilityContext ?? createApiRequestContext(request, runtime);
     const requestLogger = request.requestLogger ?? rootLogger.child(context);
-    const durationMs = Math.max(
-      0,
-      Date.now() - (request.requestStartedAt ?? Date.now())
-    );
+    const durationMs = Math.max(0, Date.now() - (request.requestStartedAt ?? Date.now()));
 
     request.activeTrace?.end({
-      statusCode: reply.statusCode
+      statusCode: reply.statusCode,
     });
 
     requestLogger.info("request.completed", {
       method: request.method,
       route: sanitizeProblemInstance(request.routeOptions.url ?? request.url),
       statusCode: reply.statusCode,
-      durationMs
+      durationMs,
     });
   });
 
   api.setErrorHandler((error, request, reply) => {
-    const context =
-      request.observabilityContext ?? createApiRequestContext(request, runtime);
+    const context = request.observabilityContext ?? createApiRequestContext(request, runtime);
     const requestLogger = request.requestLogger ?? rootLogger.child(context);
     const { statusCode, problem } = mapApiErrorToProblem(error, request, context);
 
@@ -330,7 +344,7 @@ export function buildApi(
       route: sanitizeProblemInstance(request.routeOptions.url ?? request.url),
       statusCode,
       problem,
-      error: serializeErrorForLog(error)
+      error: serializeErrorForLog(error),
     });
 
     reply
@@ -338,20 +352,29 @@ export function buildApi(
       .code(statusCode)
       .headers({
         "x-request-id": context.requestId,
-        "x-correlation-id": context.correlationId
+        "x-correlation-id": context.correlationId,
       })
       .send(problem);
   });
 
   api.get("/health", async () => ({
     service: runtime.serviceName,
-    status: "ok"
+    status: "ok",
   }));
 
   api.register(authPlugin, {
     runtime,
     authService: overrides.authService,
-    resolveInternalTenancyAccess: overrides.resolveInternalTenancyAccess
+    resolveInternalTenancyAccess: overrides.resolveInternalTenancyAccess,
+  });
+  api.register(ownerActivationPlugin, {
+    runtime,
+    ownerActivationService: overrides.ownerActivationService,
+  });
+
+  api.register(platformProvisioningPlugin, {
+    runtime,
+    platformProvisioningService: overrides.platformProvisioningService,
   });
 
   return api;

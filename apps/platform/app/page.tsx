@@ -1,9 +1,23 @@
-export default function PlatformHomePage() {
-  return (
-    <main className="surface">
-      <p className="eyebrow">Platform Surface</p>
-      <h1>Vision Platform</h1>
-      <p>Platform operations will be built here after provisioning and support access foundations.</p>
-    </main>
-  );
+import { redirect } from "next/navigation";
+
+import { PlatformAccessDenied } from "../src/features/home/platform-access-denied";
+import { PlatformShell } from "../src/features/shell/platform-shell";
+import { getPlatformAuthState } from "../src/lib/platform-auth";
+
+export default async function PlatformHomePage() {
+  const authState = await getPlatformAuthState();
+
+  if (authState.status === "unauthenticated") {
+    redirect("/login");
+  }
+
+  if (authState.status === "unauthorized") {
+    return (
+      <PlatformShell auth={authState.session}>
+        <PlatformAccessDenied auth={authState.session} />
+      </PlatformShell>
+    );
+  }
+
+  redirect("/tenants");
 }

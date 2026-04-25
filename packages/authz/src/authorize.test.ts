@@ -1,31 +1,27 @@
 import { describe, expect, it } from "vitest";
 
 import { authorize } from "./index";
-import type {
-  AuthorizationActorClaims,
-  AuthorizationInput
-} from "./types";
+import type { AuthorizationActorClaims, AuthorizationInput } from "./types";
 
 const baseInternalActor: AuthorizationActorClaims = {
   actorType: "internal",
   subjectId: "sub_internal",
-  currentAssurance: "mfa_verified"
+  currentAssurance: "mfa_verified",
 };
 
 const baseCustomerActor: AuthorizationActorClaims = {
   actorType: "customer",
   subjectId: "sub_customer",
-  currentAssurance: "basic"
+  currentAssurance: "basic",
 };
 
 function runAuthorization(
-  input: Partial<AuthorizationInput> &
-    Pick<AuthorizationInput, "resource" | "action">
+  input: Partial<AuthorizationInput> & Pick<AuthorizationInput, "resource" | "action">,
 ) {
   return authorize({
     actor: baseInternalActor,
     context: {},
-    ...input
+    ...input,
   });
 }
 
@@ -35,12 +31,12 @@ describe("authorize", () => {
       actor: baseInternalActor,
       action: "read",
       resource: { family: "unknown_family" } as unknown as AuthorizationInput["resource"],
-      context: {}
+      context: {},
     });
 
     expect(decision).toMatchObject({
       allowed: false,
-      code: "unsupported_resource"
+      code: "unsupported_resource",
     });
   });
 
@@ -50,14 +46,14 @@ describe("authorize", () => {
       action: "read",
       actor: {
         ...baseInternalActor,
-        tenantRole: "tenant_owner"
+        tenantRole: "tenant_owner",
       },
-      context: {}
+      context: {},
     });
 
     expect(decision).toMatchObject({
       allowed: false,
-      code: "missing_context"
+      code: "missing_context",
     });
   });
 
@@ -67,13 +63,13 @@ describe("authorize", () => {
       action: "read",
       context: {
         activeTenantId: "tenant_a",
-        targetTenantId: "tenant_a"
-      }
+        targetTenantId: "tenant_a",
+      },
     });
 
     expect(decision).toMatchObject({
       allowed: false,
-      code: "insufficient_scope"
+      code: "insufficient_scope",
     });
   });
 
@@ -83,17 +79,17 @@ describe("authorize", () => {
       action: "read",
       actor: {
         ...baseInternalActor,
-        tenantRole: "tenant_owner"
+        tenantRole: "tenant_owner",
       },
       context: {
         activeTenantId: "tenant_a",
-        targetTenantId: "tenant_b"
-      }
+        targetTenantId: "tenant_b",
+      },
     });
 
     expect(decision).toMatchObject({
       allowed: false,
-      code: "insufficient_scope"
+      code: "insufficient_scope",
     });
   });
 
@@ -104,17 +100,17 @@ describe("authorize", () => {
       actor: {
         ...baseInternalActor,
         tenantRole: "branch_manager",
-        assignedBranchIds: ["branch_1"]
+        assignedBranchIds: ["branch_1"],
       },
       context: {
         activeTenantId: "tenant_1",
-        targetTenantId: "tenant_1"
-      }
+        targetTenantId: "tenant_1",
+      },
     });
 
     expect(decision).toMatchObject({
       allowed: false,
-      code: "missing_context"
+      code: "missing_context",
     });
   });
 
@@ -124,19 +120,19 @@ describe("authorize", () => {
       action: "update",
       actor: {
         ...baseInternalActor,
-        tenantRole: "branch_manager"
+        tenantRole: "branch_manager",
       },
       context: {
         activeTenantId: "tenant_1",
         activeBranchId: "branch_1",
         targetTenantId: "tenant_1",
-        targetBranchId: "branch_1"
-      }
+        targetBranchId: "branch_1",
+      },
     });
 
     expect(decision).toMatchObject({
       allowed: false,
-      code: "insufficient_scope"
+      code: "insufficient_scope",
     });
   });
 
@@ -146,19 +142,19 @@ describe("authorize", () => {
       action: "read",
       actor: {
         ...baseInternalActor,
-        tenantRole: "tenant_owner"
+        tenantRole: "tenant_owner",
       },
       context: {
         activeTenantId: "tenant_1",
         activeBranchId: "branch_1",
         targetTenantId: "tenant_1",
-        targetBranchId: "branch_1"
-      }
+        targetBranchId: "branch_1",
+      },
     });
 
     expect(decision).toMatchObject({
       allowed: false,
-      code: "insufficient_scope"
+      code: "insufficient_scope",
     });
   });
 
@@ -169,19 +165,19 @@ describe("authorize", () => {
       actor: {
         ...baseInternalActor,
         tenantRole: "branch_manager",
-        assignedBranchIds: ["branch_1"]
+        assignedBranchIds: ["branch_1"],
       },
       context: {
         activeTenantId: "tenant_1",
         activeBranchId: "branch_2",
         targetTenantId: "tenant_1",
-        targetBranchId: "branch_2"
-      }
+        targetBranchId: "branch_2",
+      },
     });
 
     expect(decision).toMatchObject({
       allowed: false,
-      code: "insufficient_scope"
+      code: "insufficient_scope",
     });
   });
 
@@ -192,17 +188,17 @@ describe("authorize", () => {
       actor: {
         ...baseInternalActor,
         currentAssurance: "mfa_verified",
-        platformRole: "platform_admin"
+        platformRole: "platform_admin",
       },
       context: {
-        targetTenantId: "tenant_1"
-      }
+        targetTenantId: "tenant_1",
+      },
     });
 
     expect(decision).toMatchObject({
       allowed: false,
       code: "insufficient_assurance",
-      requiredAssurance: "step_up_verified"
+      requiredAssurance: "step_up_verified",
     });
   });
 
@@ -212,18 +208,107 @@ describe("authorize", () => {
       action: "export",
       actor: {
         ...baseInternalActor,
-        tenantRole: "tenant_owner"
+        tenantRole: "tenant_owner",
       },
       context: {
         activeTenantId: "tenant_1",
-        targetTenantId: "tenant_1"
-      }
+        targetTenantId: "tenant_1",
+      },
     });
 
     expect(decision).toMatchObject({
       allowed: false,
       code: "insufficient_assurance",
-      requiredAssurance: "step_up_verified"
+      requiredAssurance: "step_up_verified",
+    });
+  });
+
+  it("allows platform admins to create tenants without a target tenant id", () => {
+    const decision = runAuthorization({
+      resource: { family: "platform_tenant_management" },
+      action: "create",
+      actor: {
+        ...baseInternalActor,
+        platformRole: "platform_admin",
+      },
+      context: {
+        platformProvisioningOperation: "create_tenant",
+      },
+    });
+
+    expect(decision).toEqual({ allowed: true });
+  });
+
+  it("requires an explicit provisioning operation for platform tenant management writes", () => {
+    const decision = runAuthorization({
+      resource: { family: "platform_tenant_management" },
+      action: "update",
+      actor: {
+        ...baseInternalActor,
+        platformRole: "platform_admin",
+      },
+      context: {
+        targetTenantId: "tenant_1",
+      },
+    });
+
+    expect(decision).toMatchObject({
+      allowed: false,
+      code: "missing_context",
+    });
+  });
+
+  it("allows subscription updates only with the matching provisioning operation", () => {
+    const decision = runAuthorization({
+      resource: { family: "platform_tenant_management" },
+      action: "update",
+      actor: {
+        ...baseInternalActor,
+        platformRole: "platform_admin",
+      },
+      context: {
+        targetTenantId: "tenant_1",
+        platformProvisioningOperation: "update_subscription",
+      },
+    });
+
+    expect(decision).toEqual({ allowed: true });
+  });
+
+  it("allows onboarding-link issuance with explicit target tenant scope", () => {
+    const decision = runAuthorization({
+      resource: { family: "platform_tenant_management" },
+      action: "create",
+      actor: {
+        ...baseInternalActor,
+        platformRole: "platform_admin",
+      },
+      context: {
+        targetTenantId: "tenant_1",
+        platformProvisioningOperation: "issue_onboarding_link",
+      },
+    });
+
+    expect(decision).toEqual({ allowed: true });
+  });
+
+  it("rejects mismatched platform provisioning action and operation pairs", () => {
+    const decision = runAuthorization({
+      resource: { family: "platform_tenant_management" },
+      action: "update",
+      actor: {
+        ...baseInternalActor,
+        platformRole: "platform_admin",
+      },
+      context: {
+        targetTenantId: "tenant_1",
+        platformProvisioningOperation: "activate_tenant",
+      },
+    });
+
+    expect(decision).toMatchObject({
+      allowed: false,
+      code: "unsupported_action",
     });
   });
 
@@ -233,8 +318,8 @@ describe("authorize", () => {
       resource: { family: "customer_account" },
       action: "read",
       context: {
-        resourceOwnerSubjectId: "sub_customer"
-      }
+        resourceOwnerSubjectId: "sub_customer",
+      },
     });
 
     expect(decision).toEqual({ allowed: true });
@@ -246,13 +331,13 @@ describe("authorize", () => {
       resource: { family: "customer_account" },
       action: "read",
       context: {
-        resourceOwnerSubjectId: "someone_else"
-      }
+        resourceOwnerSubjectId: "someone_else",
+      },
     });
 
     expect(decision).toMatchObject({
       allowed: false,
-      code: "self_access_only"
+      code: "self_access_only",
     });
   });
 
@@ -262,13 +347,13 @@ describe("authorize", () => {
       resource: { family: "customer_account" },
       action: "delete",
       context: {
-        resourceOwnerSubjectId: "sub_customer"
-      }
+        resourceOwnerSubjectId: "sub_customer",
+      },
     });
 
     expect(decision).toMatchObject({
       allowed: false,
-      code: "unsupported_action"
+      code: "unsupported_action",
     });
   });
 
@@ -278,13 +363,13 @@ describe("authorize", () => {
       resource: { family: "customer_account" },
       action: "read",
       context: {
-        resourceOwnerSubjectId: "sub_customer"
-      }
+        resourceOwnerSubjectId: "sub_customer",
+      },
     });
 
     expect(decision).toMatchObject({
       allowed: false,
-      code: "unsupported_actor"
+      code: "unsupported_actor",
     });
   });
 });

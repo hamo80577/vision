@@ -1,0 +1,162 @@
+.stack {
+  display: grid;
+  gap: 24px;
+}
+
+.directoryShell {
+  border-radius: 18px;
+  background: rgba(247, 241, 231, 0.72);
+}
+
+.directoryFrame {
+  display: grid;
+  gap: 18px;
+}
+
+.toolbar {
+  padding: 0;
+  align-items: center;
+}
+
+.toolbar :global(.ui-table-toolbar__controls) {
+  flex: 1;
+  flex-wrap: nowrap;
+  gap: 10px;
+  justify-content: stretch;
+}
+
+.toolbarSearch {
+  flex: 1 1 auto;
+  min-width: 280px;
+}
+
+.toolbarFilter {
+  flex: 0 0 154px;
+  min-width: 154px;
+}
+
+.directoryTable {
+  overflow: hidden;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.tableCell,
+.statusCell {
+  display: grid;
+  gap: 4px;
+}
+
+.ownerCell {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.ownerAvatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: rgba(84, 84, 83, 0.12);
+  color: var(--vision-muted-ink);
+  font-size: 0.8rem;
+  font-weight: 740;
+}
+
+.tableTitle {
+  font-size: 0.98rem;
+  font-weight: 740;
+  letter-spacing: -0.02em;
+}
+
+.tableTitleLink {
+  color: inherit;
+  font-size: 0.98rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+
+.tableTitleLink:hover {
+  color: var(--vision-accent);
+}
+
+.tableMeta,
+.statusMeta {
+  color: var(--vision-muted-ink);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.actionCell {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 8px;
+  min-width: 210px;
+}
+
+.tableAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(84, 84, 83, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--vision-ink);
+  font-size: 0.84rem;
+  font-weight: 760;
+  text-decoration: none;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+  white-space: nowrap;
+}
+
+.tableAction:first-child {
+  background: #55685f;
+  border-color: #55685f;
+  color: #fffdf8;
+}
+
+.tableAction:hover {
+  border-color: rgba(84, 84, 83, 0.22);
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--vision-ink);
+  transform: translateY(-1px);
+}
+
+.tableAction:first-child:hover {
+  background: #465950;
+  border-color: #465950;
+  color: #fffdf8;
+}
+
+@media (max-width: 1100px) {
+  .toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toolbar :global(.ui-table-toolbar__controls) {
+    flex-wrap: wrap;
+    justify-content: stretch;
+  }
+
+  .toolbarSearch {
+    flex-basis: 100%;
+    min-width: 100%;
+  }
+
+  .toolbarFilter {
+    flex: 1 1 180px;
+    min-width: 180px;
+  }
+}

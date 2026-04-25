@@ -34,18 +34,13 @@ async function revokeDatabaseAccess(
 ): Promise<void> {
   const databaseIdentifier = quoteIdentifier(databaseName);
 
-  await adminClient.query(
-    `revoke all privileges on database ${databaseIdentifier} from public`,
-  );
+  await adminClient.query(`revoke all privileges on database ${databaseIdentifier} from public`);
   await adminClient.query(
     `revoke all privileges on database ${databaseIdentifier} from ${runtimeRoleIdentifier}`,
   );
 }
 
-function runPnpmCommand(
-  args: string[],
-  options: { env?: NodeJS.ProcessEnv } = {},
-): void {
+function runPnpmCommand(args: string[], options: { env?: NodeJS.ProcessEnv } = {}): void {
   const command = process.platform === "win32" ? "corepack.cmd" : "corepack";
 
   execFileSync(command, ["pnpm", ...args], {
@@ -99,10 +94,9 @@ try {
     throw new Error("DATABASE_URL and DATABASE_ADMIN_URL must use different database roles");
   }
 
-  const runtimeRoleExists = await adminClient.query(
-    "select 1 from pg_roles where rolname = $1",
-    [runtimeRoleName],
-  );
+  const runtimeRoleExists = await adminClient.query("select 1 from pg_roles where rolname = $1", [
+    runtimeRoleName,
+  ]);
   const runtimeRoleStatement = runtimeRoleExists.rowCount > 0 ? "alter role" : "create role";
 
   await adminClient.query(
@@ -131,11 +125,7 @@ try {
   );
 
   for (const database of connectableDatabases.rows) {
-    await revokeDatabaseAccess(
-      adminClient,
-      database.databaseName,
-      runtimeRoleIdentifier,
-    );
+    await revokeDatabaseAccess(adminClient, database.databaseName, runtimeRoleIdentifier);
   }
 
   await adminClient.query(
@@ -157,6 +147,7 @@ try {
 
 runPnpmCommand(["db:migrate"]);
 runPnpmCommand(["exec", "tsx", "db/scripts/apply-phase-9-grants.ts"]);
+runPnpmCommand(["exec", "tsx", "db/scripts/apply-phase-10-grants.ts"]);
 const seedEnv: NodeJS.ProcessEnv = {
   ...process.env,
   DATABASE_URL: adminTargetDatabaseUrl,

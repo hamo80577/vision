@@ -1,7 +1,4 @@
-import {
-  compareAssuranceLevels,
-  type AuthAssuranceLevel
-} from "@vision/authn";
+import { compareAssuranceLevels, type AuthAssuranceLevel } from "@vision/authn";
 
 import type {
   AuthorizationAction,
@@ -10,14 +7,10 @@ import type {
   AuthorizationDeniedCode,
   AuthorizationInput,
   AuthorizationResource,
-  InternalTenantRole
+  InternalTenantRole,
 } from "./types";
 
-const BRANCH_SCOPED_ROLES: InternalTenantRole[] = [
-  "branch_manager",
-  "receptionist",
-  "cashier"
-];
+const BRANCH_SCOPED_ROLES: InternalTenantRole[] = ["branch_manager", "receptionist", "cashier"];
 
 function allow(): AuthorizationDecision {
   return { allowed: true };
@@ -28,7 +21,7 @@ function deny(
   options: {
     requiredAssurance?: AuthAssuranceLevel;
     debug?: AuthorizationDecisionDebug;
-  } = {}
+  } = {},
 ): AuthorizationDecision {
   return {
     allowed: false,
@@ -36,20 +29,20 @@ function deny(
     ...(options.requiredAssurance === undefined
       ? {}
       : { requiredAssurance: options.requiredAssurance }),
-    ...(options.debug === undefined ? {} : { debug: options.debug })
+    ...(options.debug === undefined ? {} : { debug: options.debug }),
   };
 }
 
 function hasRequiredAssurance(
   currentAssurance: AuthAssuranceLevel,
-  requiredAssurance: AuthAssuranceLevel
+  requiredAssurance: AuthAssuranceLevel,
 ) {
   return compareAssuranceLevels(currentAssurance, requiredAssurance) >= 0;
 }
 
 function findMissingFacts(
   context: AuthorizationInput["context"],
-  factNames: (keyof AuthorizationInput["context"])[]
+  factNames: (keyof AuthorizationInput["context"])[],
 ) {
   return factNames.filter((factName) => {
     const value = context[factName];
@@ -60,7 +53,7 @@ function findMissingFacts(
 function denyMissingContext(
   policyFamily: AuthorizationResource["family"] | string,
   context: AuthorizationInput["context"],
-  factNames: (keyof AuthorizationInput["context"])[]
+  factNames: (keyof AuthorizationInput["context"])[],
 ) {
   const missingFacts = findMissingFacts(context, factNames);
 
@@ -71,62 +64,61 @@ function denyMissingContext(
   return deny("missing_context", {
     debug: {
       policyFamily,
-      missingFacts: missingFacts.map(String)
-    }
+      missingFacts: missingFacts.map(String),
+    },
   });
 }
 
 function denyUnsupportedActor(policyFamily: AuthorizationResource["family"] | string) {
   return deny("unsupported_actor", {
     debug: {
-      policyFamily
-    }
+      policyFamily,
+    },
   });
 }
 
 function denyUnsupportedAction(policyFamily: AuthorizationResource["family"] | string) {
   return deny("unsupported_action", {
     debug: {
-      policyFamily
-    }
+      policyFamily,
+    },
   });
 }
 
 function denyInsufficientScope(
   policyFamily: AuthorizationResource["family"] | string,
-  debug: AuthorizationDecisionDebug = {}
+  debug: AuthorizationDecisionDebug = {},
 ) {
   return deny("insufficient_scope", {
     debug: {
       policyFamily,
-      ...debug
-    }
+      ...debug,
+    },
   });
 }
 
 function denyInsufficientAssurance(
   policyFamily: AuthorizationResource["family"] | string,
-  requiredAssurance: AuthAssuranceLevel
+  requiredAssurance: AuthAssuranceLevel,
 ) {
   return deny("insufficient_assurance", {
     requiredAssurance,
     debug: {
-      policyFamily
-    }
+      policyFamily,
+    },
   });
 }
 
-function authorizePlatformTenantManagement(
-  input: AuthorizationInput
-): AuthorizationDecision {
+function authorizePlatformTenantManagement(input: AuthorizationInput): AuthorizationDecision {
   const policyFamily = "platform_tenant_management" as const;
   const supportedActions: AuthorizationAction[] = [
+    "create",
     "read",
     "list",
     "update",
     "change_status",
     "switch_context",
-    "export"
+    "export",
   ];
 
   if (input.actor.actorType !== "internal") {
@@ -137,17 +129,40 @@ function authorizePlatformTenantManagement(
     return denyUnsupportedAction(policyFamily);
   }
 
-  if (input.action !== "list") {
-    const missingContext = denyMissingContext(policyFamily, input.context, [
-      "targetTenantId"
-    ]);
-    if (missingContext) {
-      return missingContext;
-    }
-  }
-
   if (input.actor.platformRole !== "platform_admin") {
     return denyInsufficientScope(policyFamily);
+  }
+
+  const allowedOperationsByAction: Partial<Record<AuthorizationAction, readonly string[]>> = {
+    create: ["create_tenant", "issue_onboarding_link"],
+    read: ["read_tenant"],
+    list: ["list_tenants"],
+    update: ["update_subscription", "update_entitlements"],
+    change_status: ["activate_tenant", "suspend_tenant"],
+  };
+
+  const requiredOperations = allowedOperationsByAction[input.action];
+
+  if (requiredOperations) {
+    const missingProvisioningOperation = denyMissingContext(policyFamily, input.context, [
+      "platformProvisioningOperation",
+    ]);
+    if (missingProvisioningOperation) {
+      return missingProvisioningOperation;
+    }
+
+    const operation = input.context.platformProvisioningOperation;
+
+    if (!requiredOperations.includes(operation as string)) {
+      return denyUnsupportedAction(policyFamily);
+    }
+
+    if (!["create_tenant", "list_tenants"].includes(operation as string)) {
+      const missingContext = denyMissingContext(policyFamily, input.context, ["targetTenantId"]);
+      if (missingContext) {
+        return missingContext;
+      }
+    }
   }
 
   if (
@@ -174,7 +189,7 @@ function authorizeTenantSettings(input: AuthorizationInput): AuthorizationDecisi
 
   const missingContext = denyMissingContext(policyFamily, input.context, [
     "activeTenantId",
-    "targetTenantId"
+    "targetTenantId",
   ]);
   if (missingContext) {
     return missingContext;
@@ -186,7 +201,7 @@ function authorizeTenantSettings(input: AuthorizationInput): AuthorizationDecisi
 
   if (input.context.activeTenantId !== input.context.targetTenantId) {
     return denyInsufficientScope(policyFamily, {
-      expectedTenantId: input.context.targetTenantId
+      expectedTenantId: input.context.targetTenantId,
     });
   }
 
@@ -201,7 +216,7 @@ function authorizeBranchOperations(input: AuthorizationInput): AuthorizationDeci
     "create",
     "update",
     "change_status",
-    "switch_context"
+    "switch_context",
   ];
 
   if (input.actor.actorType !== "internal") {
@@ -217,7 +232,7 @@ function authorizeBranchOperations(input: AuthorizationInput): AuthorizationDeci
     input.context,
     input.action === "switch_context"
       ? ["activeTenantId", "targetTenantId", "targetBranchId"]
-      : ["activeTenantId", "activeBranchId", "targetTenantId", "targetBranchId"]
+      : ["activeTenantId", "activeBranchId", "targetTenantId", "targetBranchId"],
   );
   if (missingContext) {
     return missingContext;
@@ -225,7 +240,7 @@ function authorizeBranchOperations(input: AuthorizationInput): AuthorizationDeci
 
   if (input.context.activeTenantId !== input.context.targetTenantId) {
     return denyInsufficientScope(policyFamily, {
-      expectedTenantId: input.context.targetTenantId
+      expectedTenantId: input.context.targetTenantId,
     });
   }
 
@@ -236,16 +251,13 @@ function authorizeBranchOperations(input: AuthorizationInput): AuthorizationDeci
     return denyInsufficientScope(policyFamily);
   }
 
-  if (
-    input.actor.assignedBranchIds === undefined ||
-    input.actor.assignedBranchIds.length === 0
-  ) {
+  if (input.actor.assignedBranchIds === undefined || input.actor.assignedBranchIds.length === 0) {
     return denyInsufficientScope(policyFamily);
   }
 
   if (!input.actor.assignedBranchIds.includes(input.context.targetBranchId as string)) {
     return denyInsufficientScope(policyFamily, {
-      expectedBranchId: input.context.targetBranchId
+      expectedBranchId: input.context.targetBranchId,
     });
   }
 
@@ -254,7 +266,7 @@ function authorizeBranchOperations(input: AuthorizationInput): AuthorizationDeci
     input.context.activeBranchId !== input.context.targetBranchId
   ) {
     return denyInsufficientScope(policyFamily, {
-      expectedBranchId: input.context.targetBranchId
+      expectedBranchId: input.context.targetBranchId,
     });
   }
 
@@ -275,7 +287,7 @@ function authorizeWebsite(input: AuthorizationInput): AuthorizationDecision {
 
   const missingContext = denyMissingContext(policyFamily, input.context, [
     "activeTenantId",
-    "targetTenantId"
+    "targetTenantId",
   ]);
   if (missingContext) {
     return missingContext;
@@ -287,7 +299,7 @@ function authorizeWebsite(input: AuthorizationInput): AuthorizationDecision {
 
   if (input.context.activeTenantId !== input.context.targetTenantId) {
     return denyInsufficientScope(policyFamily, {
-      expectedTenantId: input.context.targetTenantId
+      expectedTenantId: input.context.targetTenantId,
     });
   }
 
@@ -314,7 +326,7 @@ function authorizeCustomerAccount(input: AuthorizationInput): AuthorizationDecis
   }
 
   const missingContext = denyMissingContext(policyFamily, input.context, [
-    "resourceOwnerSubjectId"
+    "resourceOwnerSubjectId",
   ]);
   if (missingContext) {
     return missingContext;
@@ -323,8 +335,8 @@ function authorizeCustomerAccount(input: AuthorizationInput): AuthorizationDecis
   if (input.actor.subjectId !== input.context.resourceOwnerSubjectId) {
     return deny("self_access_only", {
       debug: {
-        policyFamily
-      }
+        policyFamily,
+      },
     });
   }
 
@@ -346,8 +358,8 @@ export function authorize(input: AuthorizationInput): AuthorizationDecision {
     default:
       return deny("unsupported_resource", {
         debug: {
-          policyFamily: String((input.resource as { family?: string }).family ?? "unknown")
-        }
+          policyFamily: String((input.resource as { family?: string }).family ?? "unknown"),
+        },
       });
   }
 }

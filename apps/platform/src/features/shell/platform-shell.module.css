@@ -1,0 +1,336 @@
+.shell :global(.ui-app-shell__grid) {
+  grid-template-columns: 272px minmax(0, 1fr);
+  gap: 0;
+  transition: grid-template-columns 180ms ease;
+}
+
+.shellCollapsed :global(.ui-app-shell__grid) {
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 0;
+  transition: grid-template-columns 180ms ease;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: calc(100vh - 40px);
+  padding: 22px 18px 18px;
+  width: 100%;
+  border-right: 1px solid rgba(84, 84, 83, 0.08);
+  background: rgba(248, 244, 236, 0.68);
+  color: inherit;
+}
+
+.sidebar[data-collapsed="true"] {
+  padding-inline: 12px;
+}
+
+.sidebarTop {
+  display: grid;
+  gap: 28px;
+}
+
+.brandBlock {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.brandMark {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  background: #55685f;
+}
+
+.brandMark img {
+  width: 22px;
+  height: 22px;
+}
+
+.brandCopy {
+  display: grid;
+  gap: 4px;
+}
+
+.brandTitle,
+.brandSubtitle,
+.sessionLabel,
+.sessionValue {
+  margin: 0;
+}
+
+.brandTitle {
+  font-size: 1.05rem;
+  font-weight: 780;
+  letter-spacing: -0.02em;
+}
+
+.brandSubtitle {
+  color: var(--vision-muted-ink);
+  font-size: 0.94rem;
+}
+
+.sidebarToggle {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(84, 84, 83, 0.12);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.66);
+  color: #55685f;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.sidebarToggle:hover {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(84, 84, 83, 0.2);
+  color: var(--vision-ink);
+}
+
+.sidebarToggle:focus-visible {
+  outline: 3px solid rgba(85, 104, 95, 0.24);
+  outline-offset: 2px;
+}
+
+.nav {
+  display: grid;
+  gap: 6px;
+}
+
+.navItem {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 54px;
+  padding: 0 16px;
+  border-radius: 12px;
+  color: rgba(42, 37, 31, 0.88);
+  text-decoration: none;
+  transition:
+    background 180ms ease,
+    color 180ms ease,
+    border-color 180ms ease;
+}
+
+.navItem:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.navItem[data-active="true"] {
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: inset -3px 0 0 #55685f;
+}
+
+.navIcon {
+  display: inline-flex;
+  justify-content: center;
+  color: #5f685f;
+  font-size: 1rem;
+}
+
+.navItemTitle {
+  font-size: 0.98rem;
+  font-weight: 730;
+  letter-spacing: -0.02em;
+}
+
+.sidebarFooter {
+  display: grid;
+  gap: 14px;
+}
+
+.sessionBlock {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.54);
+  cursor: default;
+}
+
+.avatar,
+.topBarAvatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: rgba(84, 84, 83, 0.12);
+  font-size: 0.92rem;
+  font-weight: 780;
+}
+
+.sessionCopy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.sessionValue {
+  font-size: 0.9rem;
+  font-weight: 720;
+  overflow-wrap: anywhere;
+}
+
+.sessionRole {
+  margin: 0;
+  color: #55685f;
+  font-size: 0.78rem;
+  font-weight: 760;
+}
+
+.logoutForm {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.logoutButton {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid rgba(84, 84, 83, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--vision-ink);
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 760;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+.logoutButton:hover {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(84, 84, 83, 0.18);
+}
+
+.logoutButton:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.content {
+  display: grid;
+  gap: 0;
+}
+
+.topBar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 58px;
+  padding: 0 6px 0 0;
+  border-bottom: 1px solid rgba(84, 84, 83, 0.08);
+  border-left: 0;
+  background: rgba(255, 253, 248, 0.72);
+  backdrop-filter: blur(14px);
+}
+
+.topBarSpacer {
+  min-width: 1px;
+}
+
+.topBarMeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pageContent {
+  display: grid;
+  gap: 26px;
+  padding: 24px 0 0 24px;
+}
+
+.sidebar[data-collapsed="true"] .brandBlock {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+}
+
+.sidebar[data-collapsed="true"] .sidebarToggle {
+  width: 44px;
+}
+
+.sidebar[data-collapsed="true"] .brandCopy,
+.sidebar[data-collapsed="true"] .navItemTitle,
+.sidebar[data-collapsed="true"] .sessionCopy,
+.sidebar[data-collapsed="true"] .logoutForm {
+  display: none;
+}
+
+.sidebar[data-collapsed="true"] .navItem {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  padding: 0;
+}
+
+.sidebar[data-collapsed="true"] .sessionBlock {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  padding: 8px 0;
+  background: transparent;
+}
+
+@media (max-width: 980px) {
+  .shell :global(.ui-app-shell__grid),
+  .shellCollapsed :global(.ui-app-shell__grid) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    min-height: auto;
+    padding: 0;
+    border-right: none;
+    background: transparent;
+  }
+
+  .sidebar[data-collapsed="true"] {
+    padding: 0;
+  }
+
+  .brandBlock {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .sidebar[data-collapsed="true"] .brandBlock {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    justify-items: stretch;
+  }
+
+  .sidebar[data-collapsed="true"] .brandCopy,
+  .sidebar[data-collapsed="true"] .navItemTitle,
+  .sidebar[data-collapsed="true"] .sessionCopy,
+  .sidebar[data-collapsed="true"] .logoutForm {
+    display: grid;
+  }
+
+  .topBar {
+    position: static;
+    padding-right: 0;
+  }
+
+  .pageContent {
+    padding-left: 0;
+  }
+}

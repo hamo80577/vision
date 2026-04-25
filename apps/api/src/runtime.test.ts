@@ -24,6 +24,14 @@ describe("runtime", () => {
         "postgresql://vision_local:vision_local_password@localhost:5432/vision_local",
       mfaEncryptionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
       mfaEncryptionKeyVersion: "v1",
+      allowedOrigins: [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002"
+      ],
       logLevel: "debug",
       serviceName: "vision-api"
     });

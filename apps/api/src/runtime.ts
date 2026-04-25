@@ -8,6 +8,7 @@ export type ApiRuntimeConfig = {
   databaseUrl: string;
   mfaEncryptionKey: string;
   mfaEncryptionKeyVersion: string;
+  allowedOrigins?: string[];
   logLevel: LogLevel;
   serviceName: "vision-api";
 };
@@ -26,6 +27,7 @@ export function getApiRuntimeConfig(
     databaseUrl: config.databaseUrl,
     mfaEncryptionKey: config.mfaEncryptionKey,
     mfaEncryptionKeyVersion: config.mfaEncryptionKeyVersion,
+    allowedOrigins: config.allowedOrigins,
     logLevel: config.logLevel,
     serviceName: "vision-api"
   };

@@ -1,0 +1,75 @@
+.stack {
+  display: grid;
+  gap: 24px;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+  gap: 24px;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.summaryValue {
+  margin: 0;
+  font-size: clamp(1.4rem, 3vw, 2rem);
+  font-weight: 780;
+  letter-spacing: -0.04em;
+}
+
+.summaryLabel {
+  margin: 0;
+  color: var(--vision-muted-ink);
+  font-size: 0.82rem;
+  font-weight: 760;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.paragraph {
+  margin: 0;
+  color: var(--vision-muted-ink);
+  font-size: 0.98rem;
+  line-height: 1.68;
+}
+
+.capabilities {
+  display: grid;
+  gap: 14px;
+}
+
+.capability {
+  display: grid;
+  gap: 6px;
+}
+
+.capabilityTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 750;
+}
+
+.capabilityDescription {
+  margin: 0;
+  color: var(--vision-muted-ink);
+  line-height: 1.65;
+}
+
+.dataGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (max-width: 1100px) {
+  .hero,
+  .summaryGrid,
+  .dataGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
