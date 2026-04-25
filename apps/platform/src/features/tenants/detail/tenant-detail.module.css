@@ -1,0 +1,190 @@
+.stack {
+  display: grid;
+  gap: 24px;
+}
+
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.82fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.mainColumn,
+.sideColumn {
+  display: grid;
+  gap: 20px;
+}
+
+.sideColumn {
+  position: sticky;
+  top: 24px;
+}
+
+.section {
+  display: grid;
+  gap: 16px;
+}
+
+.sectionHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sectionCopy {
+  display: grid;
+  gap: 4px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 1.04rem;
+  font-weight: 760;
+  letter-spacing: -0.02em;
+}
+
+.sectionDescription {
+  margin: 0;
+  color: var(--vision-muted-ink);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.badgeRow,
+.actionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.fieldSpan {
+  grid-column: 1 / -1;
+}
+
+.statusValue {
+  margin: 0;
+  font-size: 1.56rem;
+  font-weight: 790;
+  letter-spacing: -0.04em;
+}
+
+.statusMeta {
+  margin: 0;
+  color: var(--vision-muted-ink);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.noticeStack {
+  display: grid;
+  gap: 12px;
+}
+
+.inviteFrame {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border-radius: var(--vision-radius-lg);
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.inviteLabel {
+  margin: 0;
+  color: var(--vision-muted-ink);
+  font-size: 0.78rem;
+  font-weight: 760;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.invitePath {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: "JetBrains Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-size: 0.88rem;
+  line-height: 1.65;
+}
+
+.lifecycleList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.lifecycleItem {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px 14px 22px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.lifecycleItem::before {
+  content: "";
+  position: absolute;
+  top: 18px;
+  left: 12px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--vision-accent);
+}
+
+.lifecycleTitle {
+  margin: 0;
+  font-size: 0.97rem;
+  font-weight: 740;
+}
+
+.lifecycleMeta {
+  margin: 0;
+  color: var(--vision-muted-ink);
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
+.loadMoreRow {
+  display: flex;
+  justify-content: center;
+}
+
+.monoValue {
+  font-family: "JetBrains Mono", "SFMono-Regular", ui-monospace, monospace;
+  font-size: 0.86rem;
+}
+
+@media (max-width: 1180px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sideColumn {
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .formGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lifecycleList {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

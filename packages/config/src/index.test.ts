@@ -39,6 +39,14 @@ describe("@vision/config", () => {
       databaseUrl: localDatabaseUrl,
       mfaEncryptionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
       mfaEncryptionKeyVersion: "v1",
+      allowedOrigins: [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
+      ],
       logLevel: "info",
     });
   });
@@ -58,6 +66,14 @@ describe("@vision/config", () => {
         databaseUrl: localDatabaseUrl,
         mfaEncryptionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
         mfaEncryptionKeyVersion: "v1",
+        allowedOrigins: [
+          "http://localhost:3000",
+          "http://127.0.0.1:3000",
+          "http://localhost:3001",
+          "http://127.0.0.1:3001",
+          "http://localhost:3002",
+          "http://127.0.0.1:3002",
+        ],
         logLevel,
       });
     },
@@ -116,6 +132,17 @@ describe("@vision/config", () => {
         API_HOST: "0.0.0.0",
       }),
     ).toThrow(ConfigError);
+  });
+
+  it("parses explicit API CORS origins", () => {
+    expect(
+      parseApiConfig({
+        ...validApiEnv,
+        CORS_ALLOWED_ORIGINS: "https://platform.vision.test, https://erp.vision.test",
+      }),
+    ).toMatchObject({
+      allowedOrigins: ["https://platform.vision.test", "https://erp.vision.test"],
+    });
   });
 
   it("rejects the local database password in production worker config", () => {

@@ -1,0 +1,90 @@
+.page {
+  min-height: 100vh;
+  padding: 28px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 430px);
+  gap: 24px;
+  width: min(1180px, 100%);
+  margin: 0 auto;
+}
+
+.stack {
+  display: grid;
+  gap: 24px;
+}
+
+.formStack {
+  display: grid;
+  gap: 16px;
+}
+
+.actionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.copy {
+  margin: 0;
+  color: var(--vision-muted-ink);
+  line-height: 1.65;
+}
+
+.detailList {
+  display: grid;
+  gap: 14px;
+}
+
+.detailItem {
+  display: grid;
+  gap: 4px;
+}
+
+.detailLabel {
+  color: var(--vision-muted-ink);
+  font-size: 0.78rem;
+  font-weight: 760;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.detailValue {
+  font-size: 0.98rem;
+  font-weight: 720;
+}
+
+.codes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.code {
+  padding: 14px 16px;
+  border-radius: var(--vision-radius-md);
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 0.96rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+@media (max-width: 960px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 18px;
+  }
+
+  .codes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

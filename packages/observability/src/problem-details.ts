@@ -25,7 +25,11 @@ export type ProblemCode =
   | "branch_not_in_active_tenant_scope"
   | "tenant_db_context_required"
   | "not_found"
-  | "conflict";
+  | "conflict"
+  | "activation_link_invalid"
+  | "activation_link_expired"
+  | "activation_link_revoked"
+  | "activation_link_consumed";
 
 export type ProblemRequiredAssurance =
   | "basic"

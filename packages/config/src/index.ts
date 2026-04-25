@@ -63,6 +63,7 @@ const apiEnvSchema = z.object({
   DATABASE_URL: databaseUrlSchema,
   AUTH_MFA_ENCRYPTION_KEY: mfaEncryptionKeySchema,
   AUTH_MFA_ENCRYPTION_KEY_VERSION: z.string().min(1),
+  CORS_ALLOWED_ORIGINS: z.string().optional(),
   LOG_LEVEL: logLevelSchema.default("info"),
 });
 
@@ -89,6 +90,7 @@ export type ApiConfig = {
   databaseUrl: string;
   mfaEncryptionKey: string;
   mfaEncryptionKeyVersion: string;
+  allowedOrigins: string[];
   logLevel: LogLevel;
 };
 
@@ -284,6 +286,22 @@ export function parseApiConfig(env: RuntimeEnv): ApiConfig {
   assertDatabaseUrlHasCredentials("DATABASE_URL", parsed.DATABASE_URL);
   assertSafeDatabaseUrl(parsed.APP_ENV, parsed.DATABASE_URL);
 
+  const allowedOrigins =
+    parsed.CORS_ALLOWED_ORIGINS
+      ?.split(",")
+      .map((origin) => origin.trim())
+      .filter((origin) => origin.length > 0) ??
+    (parsed.APP_ENV === "local" || parsed.APP_ENV === "test"
+      ? [
+          "http://localhost:3000",
+          "http://127.0.0.1:3000",
+          "http://localhost:3001",
+          "http://127.0.0.1:3001",
+          "http://localhost:3002",
+          "http://127.0.0.1:3002",
+        ]
+      : []);
+
   return {
     appEnv: parsed.APP_ENV,
     host: parsed.API_HOST,
@@ -291,6 +309,7 @@ export function parseApiConfig(env: RuntimeEnv): ApiConfig {
     databaseUrl: parsed.DATABASE_URL,
     mfaEncryptionKey: parsed.AUTH_MFA_ENCRYPTION_KEY,
     mfaEncryptionKeyVersion: parsed.AUTH_MFA_ENCRYPTION_KEY_VERSION,
+    allowedOrigins,
     logLevel: parsed.LOG_LEVEL,
   };
 }

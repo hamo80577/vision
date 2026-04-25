@@ -499,6 +499,41 @@ export function createAuthnService(
 
     async startMfaEnrollment(input: { challengeToken: string; accountName: string }) {
       const challenge = await requireActiveChallenge(input.challengeToken);
+
+      const [existingFactor] = await db
+        .select()
+        .from(authMfaTotpFactors)
+        .where(
+          and(
+            eq(authMfaTotpFactors.subjectId, challenge.subjectId),
+            isNull(authMfaTotpFactors.disabledAt),
+          ),
+        )
+        .limit(1);
+
+      if (existingFactor) {
+        if (existingFactor.verifiedAt) {
+          throw new AuthnError("invalid_assurance_challenge");
+        }
+
+        const manualEntryKey = decryptTotpSecret(
+          existingFactor.encryptedSecret,
+          options.mfaEncryptionKey,
+        );
+
+        await writeEvent({
+          subjectType: "internal",
+          subjectId: challenge.subjectId,
+          eventType: "mfa_enrollment_started",
+        });
+
+        return createTotpProvisioning({
+          issuer: totpIssuer,
+          accountName: input.accountName,
+          manualEntryKey,
+        });
+      }
+
       const manualEntryKey = generateTotpSecret();
       const encryptedSecret = encryptTotpSecret(manualEntryKey, options.mfaEncryptionKey);
 

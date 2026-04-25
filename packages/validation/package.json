@@ -11,5 +11,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@vision/contracts": "workspace:*",
+    "zod": "4.3.6"
   }
 }

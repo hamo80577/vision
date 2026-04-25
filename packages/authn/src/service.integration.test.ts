@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import * as OTPAuth from "otpauth";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   authAccountEvents,
+  authMfaTotpFactors,
   authSessions,
   authSubjects,
   closeDatabasePool,
@@ -316,6 +317,64 @@ describe("createAuthnService", () => {
       expect(completed.session.assuranceLevel).toBe("mfa_verified");
       expect(completed.backupCodes).toHaveLength(8);
       expect(completed.backupCodes[0]).not.toContain("-");
+    },
+    AUTHN_INTEGRATION_TIMEOUT_MS,
+  );
+
+  it(
+    "reuses an unfinished TOTP enrollment when a sensitive user signs in again",
+    async () => {
+      const loginIdentifier = `owner-retry+${randomUUID()}@vision.test`;
+      const subject = await seedSubject(
+        "internal",
+        loginIdentifier,
+        "S3cure-password!",
+        "tenant_owner",
+      );
+
+      const firstLogin = await authn.login({
+        subjectType: "internal",
+        loginIdentifier,
+        password: "S3cure-password!",
+      });
+
+      if (firstLogin.kind !== "mfa_challenge") {
+        throw new Error("Expected first MFA challenge result.");
+      }
+
+      const firstEnrollment = await authn.startMfaEnrollment({
+        challengeToken: firstLogin.challengeToken,
+        accountName: loginIdentifier,
+      });
+
+      const secondLogin = await authn.login({
+        subjectType: "internal",
+        loginIdentifier,
+        password: "S3cure-password!",
+      });
+
+      if (secondLogin.kind !== "mfa_challenge") {
+        throw new Error("Expected second MFA challenge result.");
+      }
+
+      const secondEnrollment = await authn.startMfaEnrollment({
+        challengeToken: secondLogin.challengeToken,
+        accountName: loginIdentifier,
+      });
+
+      const activeFactors = await adminDb
+        .select()
+        .from(authMfaTotpFactors)
+        .where(
+          and(
+            eq(authMfaTotpFactors.subjectId, subject.id),
+            isNull(authMfaTotpFactors.disabledAt),
+          ),
+        );
+
+      expect(secondEnrollment.manualEntryKey).toBe(firstEnrollment.manualEntryKey);
+      expect(secondEnrollment.otpauthUrl).toContain(encodeURIComponent(loginIdentifier));
+      expect(activeFactors).toHaveLength(1);
     },
     AUTHN_INTEGRATION_TIMEOUT_MS,
   );
