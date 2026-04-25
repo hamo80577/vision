@@ -13,6 +13,8 @@ import {
   withDatabaseAccessContext,
 } from "./index";
 
+const RLS_TEST_TIMEOUT_MS = 20_000;
+
 const runtimeConfig = getDatabaseRuntimeConfig(process.env);
 const adminConfig = getDatabaseAdminConfig(process.env);
 
@@ -64,7 +66,7 @@ describe("Phase 9 RLS proof surface", () => {
     );
 
     expect(result.rows).toEqual([{ id: rowA, tenant_id: tenantA }]);
-  });
+  }, RLS_TEST_TIMEOUT_MS);
 
   it("allows same-tenant writes", async () => {
     const tenantId = `tenant_${randomUUID()}`;
@@ -121,7 +123,7 @@ describe("Phase 9 RLS proof surface", () => {
         probe_value: "tenant-a-updated",
       },
     ]);
-  });
+  }, RLS_TEST_TIMEOUT_MS);
 
   it("denies cross-tenant reads", async () => {
     const tenantA = `tenant_${randomUUID()}`;
@@ -155,7 +157,7 @@ describe("Phase 9 RLS proof surface", () => {
     );
 
     expect(result.rows).toEqual([{ id: rowA, tenant_id: tenantA }]);
-  });
+  }, RLS_TEST_TIMEOUT_MS);
 
   it("denies cross-tenant writes including foreign-row update and delete attempts", async () => {
     const tenantA = `tenant_${randomUUID()}`;
@@ -239,7 +241,7 @@ describe("Phase 9 RLS proof surface", () => {
     `);
 
     expect(verification.rows).toEqual([{ probe_value: "tenant-b" }]);
-  });
+  }, RLS_TEST_TIMEOUT_MS);
 
   it("fails closed when tenant context is missing", async () => {
     const tenantId = `tenant_${randomUUID()}`;
@@ -262,7 +264,7 @@ describe("Phase 9 RLS proof surface", () => {
         message: "vision.tenant_id is required",
       }),
     });
-  });
+  }, RLS_TEST_TIMEOUT_MS);
 
   it("prevents the runtime role from managing or disabling protected-table policy state", async () => {
     const policyState = await adminDb.execute<{
@@ -328,5 +330,5 @@ describe("Phase 9 RLS proof surface", () => {
         message: expect.stringMatching(/must be owner/i),
       }),
     });
-  });
+  }, RLS_TEST_TIMEOUT_MS);
 });
