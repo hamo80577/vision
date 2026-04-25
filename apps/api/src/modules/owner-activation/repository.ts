@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import {
   authAccountEvents,
@@ -12,7 +12,7 @@ import {
   withDatabaseTransaction,
 } from "@vision/db";
 
-type DatabaseExecutor = Pick<VisionDatabase, "insert" | "select" | "update">;
+type DatabaseExecutor = Pick<VisionDatabase, "execute" | "insert" | "select" | "update">;
 
 type ActivationRecord = {
   onboardingLink: typeof tenantOnboardingLinks.$inferSelect;
@@ -53,8 +53,18 @@ function createRepositoryForExecutor(executor: DatabaseExecutor) {
       return subject ?? null;
     },
 
-    async insertAuthSubject(values: typeof authSubjects.$inferInsert) {
-      await executor.insert(authSubjects).values(values);
+    async createTenantOwnerAuthSubject(values: typeof authSubjects.$inferInsert) {
+      await executor.execute(sql`
+        select public.create_tenant_owner_auth_subject(
+          ${values.id},
+          ${values.loginIdentifier},
+          ${values.normalizedLoginIdentifier},
+          ${values.passwordHash},
+          ${values.passwordUpdatedAt},
+          ${values.createdAt},
+          ${values.updatedAt}
+        )
+      `);
     },
 
     async insertAuthAssuranceChallenge(values: typeof authAssuranceChallenges.$inferInsert) {

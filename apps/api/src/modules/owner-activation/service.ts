@@ -142,7 +142,7 @@ export function createOwnerActivationService(options: OwnerActivationServiceOpti
 
       try {
         return await repository.transaction(async (txRepository) => {
-          await txRepository.insertAuthSubject({
+          await txRepository.createTenantOwnerAuthSubject({
             id: subjectId,
             subjectType: "internal",
             loginIdentifier: record.owner.phoneNumber,

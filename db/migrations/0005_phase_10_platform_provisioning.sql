@@ -109,4 +109,45 @@ CREATE UNIQUE INDEX "tenant_owners_tenant_id_key" ON "tenant_owners" USING btree
 CREATE UNIQUE INDEX "tenant_owners_auth_subject_id_key" ON "tenant_owners" USING btree ("auth_subject_id");--> statement-breakpoint
 CREATE INDEX "tenant_owners_normalized_phone_idx" ON "tenant_owners" USING btree ("normalized_phone_number");--> statement-breakpoint
 CREATE UNIQUE INDEX "tenant_subscriptions_tenant_id_key" ON "tenant_subscriptions" USING btree ("tenant_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "tenants_slug_key" ON "tenants" USING btree ("slug");
+CREATE UNIQUE INDEX "tenants_slug_key" ON "tenants" USING btree ("slug");--> statement-breakpoint
+CREATE OR REPLACE FUNCTION "public"."create_tenant_owner_auth_subject"(
+  "p_id" varchar,
+  "p_login_identifier" text,
+  "p_normalized_login_identifier" text,
+  "p_password_hash" text,
+  "p_password_updated_at" timestamp with time zone,
+  "p_created_at" timestamp with time zone,
+  "p_updated_at" timestamp with time zone
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  INSERT INTO public.auth_subjects (
+    id,
+    subject_type,
+    login_identifier,
+    normalized_login_identifier,
+    password_hash,
+    password_updated_at,
+    internal_sensitivity,
+    is_enabled,
+    created_at,
+    updated_at
+  )
+  VALUES (
+    p_id,
+    'internal'::public.auth_subject_type,
+    p_login_identifier,
+    p_normalized_login_identifier,
+    p_password_hash,
+    p_password_updated_at,
+    'tenant_owner'::public.auth_internal_sensitivity,
+    true,
+    p_created_at,
+    p_updated_at
+  );
+END;
+$$;--> statement-breakpoint
+REVOKE ALL ON FUNCTION "public"."create_tenant_owner_auth_subject"(varchar, text, text, text, timestamp with time zone, timestamp with time zone, timestamp with time zone) FROM PUBLIC;

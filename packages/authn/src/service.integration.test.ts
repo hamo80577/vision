@@ -144,6 +144,13 @@ describe("createAuthnService", () => {
 
       await expect(
         runtimeDb
+          .update(authSubjects)
+          .set({ isEnabled: false })
+          .where(eq(authSubjects.id, seededSubject.id)),
+      ).rejects.toThrow();
+
+      await expect(
+        runtimeDb
           .select({ id: authSubjects.id })
           .from(authSubjects)
           .where(eq(authSubjects.id, seededSubject.id)),

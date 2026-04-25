@@ -64,7 +64,10 @@ try {
     `grant select, insert on table ${qualifyTable("public", "tenant_lifecycle_events")} to ${role}`,
   );
   await adminClient.query(
-    `grant insert on table ${qualifyTable("public", "auth_subjects")} to ${role}`,
+    `revoke insert, update, delete on table ${qualifyTable("public", "auth_subjects")} from ${role}`,
+  );
+  await adminClient.query(
+    `grant execute on function ${quoteIdentifier("public")}.${quoteIdentifier("create_tenant_owner_auth_subject")}(varchar, text, text, text, timestamp with time zone, timestamp with time zone, timestamp with time zone) to ${role}`,
   );
 } finally {
   await adminClient.end();
